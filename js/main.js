@@ -98,6 +98,16 @@ function runLoop() {
       if (!gameState || gameState.gameOver) return;
 
       if (gameState.pendingEvent) {
+        const pop = gameState.pops.reduce((s, p) => s + p.count, 0);
+        if (pop <= 0) {
+          gameState.pendingEvent = null;
+          checkEnding(gameState);
+          renderGame(gameState);
+          if (gameState.gameOver) {
+            showEndScreen(gameState);
+            return;
+          }
+        }
         handlePendingEvent();
         loopId = requestAnimationFrame(frame);
         return;
@@ -118,6 +128,7 @@ function runLoop() {
         for (let i = 0; i < ticksPerFrame; i++) {
           if (gameState.gameOver || gameState.pendingEvent) break;
           simulateTick(gameState);
+          if (!gameState.gameOver && !gameState.pendingEvent) checkEnding(gameState);
         }
         acc -= step;
         if (gameState.gameOver || gameState.pendingEvent) break;

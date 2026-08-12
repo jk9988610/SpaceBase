@@ -3,7 +3,10 @@
  */
 
 /** 构建版本号：更新资源缓存 */
-const BUILD_VERSION = '20260812-player-v2';
+const BUILD_VERSION = '20260812-law-pop-v3';
+
+/** 聚变启航最低人口（低于此无法达成双星文明结局） */
+const MIN_LAUNCH_POPULATION = 500;
 
 const TICKS_PER_MONTH = 30;
 const TICKS_PER_YEAR = 365;
@@ -432,18 +435,37 @@ const EVENTS = [
   },
 ];
 
-/** AI 法律修订候选：当条件满足时考虑切换 */
+/**
+ * 法律演进序位（索引越大越「先进」）。
+ * AI 立法只许沿序位前进；危机用紧急法令（modifiers）临时应对，不撤回法案。
+ */
+const LAW_PROGRESS_ORDER = {
+  immigration: ['closed', 'quota', 'selective', 'open'],
+  labor: ['forced', 'shift', 'standard', 'merit'],
+  welfare: ['austerity', 'merit', 'ration', 'needs'],
+  genetics: ['mandatory', 'enhance', 'voluntary', 'free'],
+  governance: ['emergency', 'federal', 'council', 'technocrat'],
+  economy: ['wartime', 'planned', 'voucher', 'market'],
+};
+
+/** AI 立法议程：条件满足时沿 LAW_PROGRESS_ORDER 推进一步 */
 const LAW_REVISION_CANDIDATES = [
-  { group: 'welfare', to: 'austerity', when: { foodBelow: 30 }, profile: ['survival', 'authoritarian'] },
-  { group: 'welfare', to: 'needs', when: { moraleBelow: 40 }, profile: ['humanitarian'] },
-  { group: 'labor', to: 'shift', when: { oreBelow: 20 }, profile: ['expansion', 'survival'] },
-  { group: 'labor', to: 'forced', when: { moraleBelow: 25 }, profile: ['authoritarian'] },
-  { group: 'immigration', to: 'open', when: { diversityBelow: 0.4 }, profile: ['humanitarian', 'expansion'] },
-  { group: 'immigration', to: 'closed', when: { foodBelow: 25 }, profile: ['survival', 'authoritarian'] },
-  { group: 'genetics', to: 'mandatory', when: { diversityBelow: 0.35 }, profile: ['technocrat', 'survival'] },
-  { group: 'governance', to: 'emergency', when: { phase: 2, moraleBelow: 30 }, profile: ['authoritarian', 'survival'] },
-  { group: 'governance', to: 'technocrat', when: { researchBelow: 0.5 }, profile: ['technocrat'] },
-  { group: 'economy', to: 'wartime', when: { phase: 2, foodBelow: 20 }, profile: ['survival', 'authoritarian'] },
+  { group: 'welfare', to: 'merit', when: { researchBelow: 0.35 }, profile: ['technocrat', 'survival'] },
+  { group: 'welfare', to: 'needs', when: { moraleBelow: 42 }, profile: ['humanitarian'] },
+  { group: 'welfare', to: 'ration', when: { phase: 2 }, profile: ['survival', 'authoritarian', 'expansion'] },
+  { group: 'labor', to: 'shift', when: { energyBelow: 35 }, profile: ['survival', 'expansion', 'authoritarian'] },
+  { group: 'labor', to: 'merit', when: { researchBelow: 0.55 }, profile: ['technocrat', 'expansion'] },
+  { group: 'immigration', to: 'selective', when: { diversityBelow: 0.48 }, profile: ['technocrat', 'survival', 'authoritarian'] },
+  { group: 'immigration', to: 'open', when: { diversityBelow: 0.38 }, profile: ['humanitarian', 'expansion'] },
+  { group: 'genetics', to: 'mandatory', when: { diversityBelow: 0.42 }, profile: ['technocrat', 'survival'] },
+  { group: 'genetics', to: 'enhance', when: { researchBelow: 0.65 }, profile: ['technocrat'] },
+  { group: 'genetics', to: 'free', when: { moraleBelow: 38 }, profile: ['humanitarian'] },
+  { group: 'governance', to: 'technocrat', when: { researchBelow: 0.48 }, profile: ['technocrat'] },
+  { group: 'governance', to: 'emergency', when: { phase: 2 }, profile: ['authoritarian', 'survival'] },
+  { group: 'governance', to: 'federal', when: { moraleBelow: 32 }, profile: ['humanitarian', 'expansion'] },
+  { group: 'economy', to: 'voucher', when: { phase: 2 }, profile: ['expansion', 'humanitarian'] },
+  { group: 'economy', to: 'wartime', when: { phase: 2, researchBelow: 0.25 }, profile: ['survival', 'authoritarian'] },
+  { group: 'economy', to: 'market', when: { researchBelow: 0.75 }, profile: ['expansion', 'technocrat'] },
 ];
 
 const GENE_GROUPS = ['A', 'B', 'C', 'D', 'E'];
