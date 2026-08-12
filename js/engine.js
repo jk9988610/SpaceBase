@@ -42,7 +42,7 @@ function createInitialState(aiProfile = 'survival') {
     lab: 1, medical: 1, archive: 1, immigration: 1,
   };
 
-  return {
+  const state = {
     tick: 0,
     phase: 1,
     aiProfile,
@@ -62,13 +62,66 @@ function createInitialState(aiProfile = 'survival') {
     inbreedRisk: 1,
     immigrationClosed: false,
     ending: null,
-    archive: { snapshots: [], decisions: [], laws: [] },
+    endingCause: null,
+    archive: { snapshots: [], decisions: [], laws: [], milestones: [], initial: null },
     currentEvent: null,
     lastAIDecision: null,
     log: [],
     gameOver: false,
     shipProgress: 0,
   };
+
+  state.archive.initial = captureStateSnapshot(state);
+  const initPop = state.pops.reduce((s, p) => s + p.count, 0);
+  recordMilestone(state, 'baseline', '首座太空基地建成',
+    `首批移民 ${initPop} 人入驻，地球倒计时 ${EARTH_COUNTDOWN_YEARS} 年开始`);
+
+  return state;
+}
+
+function captureStateSnapshot(state) {
+  const stats = aggregateStats(state);
+  return {
+    tick: state.tick,
+    year: getYear(state),
+    date: formatDate(state),
+    phase: state.phase,
+    population: stats.total,
+    morale: stats.morale,
+    diversity: stats.diversity,
+    stability: stats.stability,
+    radical: stats.radical,
+    resources: { ...state.resources },
+    research: state.research,
+    shipProgress: state.shipProgress,
+    political: state.political,
+    compartments: { ...state.compartments },
+    laws: { ...state.laws },
+  };
+}
+
+function recordMilestone(state, category, title, detail = '', delta = null) {
+  state.archive.milestones.push({
+    tick: state.tick,
+    year: getYear(state),
+    date: formatDate(state),
+    category,
+    title,
+    detail,
+    delta,
+    snapshot: captureStateSnapshot(state),
+  });
+  if (state.archive.milestones.length > 120) state.archive.milestones.shift();
+}
+
+function setEnding(state, endingId, causeId, context = {}) {
+  if (state.gameOver) return;
+  state.ending = endingId;
+  state.endingCause = { id: causeId, ...context };
+  state.gameOver = true;
+  const cause = ENDING_CAUSES[causeId];
+  recordMilestone(state, 'ending', cause?.title || '文明终结', cause?.desc || '', context);
+  addLog(state, `结局锁定：${ENDINGS[endingId].title} — ${cause?.title || causeId}`, 'danger');
 }
 
 function getYear(state) { return Math.floor(state.tick / TICKS_PER_YEAR); }
@@ -235,6 +288,9 @@ function checkPhaseTransition(state) {
     state.resources.food += 30;
     addLog(state, '小行星撞击地球。地球纪元结束，太空纪元开始。补给永久归零。', 'danger');
     archiveDecision(state, 'phase', '地球毁灭，进入太空纪元');
+    const stats = aggregateStats(state);
+    recordMilestone(state, 'phase', '小行星撞击地球 · 太空纪元开始',
+      `人口 ${stats.total}，食物 ${Math.floor(state.resources.food)}，挥发物 ${Math.floor(state.resources.volatiles)}`);
   }
 }
 
@@ -252,13 +308,29 @@ function archiveDecision(state, eventId, summary, detail = '') {
 
 function archiveSnapshot(state) {
   if (state.tick % 30 !== 0) return;
-  state.archive.snapshots.push({
-    tick: state.tick, year: getYear(state),
-    ...aggregateStats(state),
-    resources: { ...state.resources },
-    research: state.research,
-    phase: state.phase,
-  });
+  const snap = captureStateSnapshot(state);
+  state.archive.snapshots.push(snap);
+
+  const prev = state.archive.snapshots[state.archive.snapshots.length - 2];
+  if (prev) {
+    const popDrop = (prev.population - snap.population) / Math.max(prev.population, 1);
+    if (popDrop > 0.15) {
+      recordMilestone(state, 'crisis', '人口骤降',
+        `${prev.population} → ${snap.population}（-${Math.round(popDrop * 100)}%）`);
+    }
+    if (snap.resources.food < snap.population * 0.03 && prev.resources.food >= prev.population * 0.03) {
+      recordMilestone(state, 'crisis', '食物危机', `储备 ${Math.floor(snap.resources.food)}，低于人口需求`);
+    }
+    if (snap.resources.volatiles < 15 && prev.resources.volatiles >= 15) {
+      recordMilestone(state, 'crisis', '挥发物告急', `剩余 ${Math.floor(snap.resources.volatiles)}`);
+    }
+    if (snap.research >= 0.5 && prev.research < 0.5) {
+      recordMilestone(state, 'tech', '科研突破 50%', `研发进度 ${(snap.research * 100).toFixed(0)}%`);
+    }
+    if (snap.research >= 1 && prev.research < 1) {
+      recordMilestone(state, 'tech', '科研完全体', '世代飞船技术理论完备');
+    }
+  }
 }
 
 function enactLaw(state, group, optionKey, reason) {
@@ -274,6 +346,8 @@ function enactLaw(state, group, optionKey, reason) {
   addLog(state, `法律修订：${LAW_GROUPS[group].name} → ${name}`, 'important');
   state.archive.laws.push({ tick: state.tick, date: formatDate(state), group, from: old, to: optionKey, reason });
   archiveDecision(state, 'law', `${LAW_GROUPS[group].name}：${name}`, reason);
+  recordMilestone(state, 'law', `法律修订：${name}`,
+    `${LAW_GROUPS[group].options[old]?.name || old} → ${name}（${reason}）`);
 
   state.pops.forEach(p => {
     if (p.ideology === 'faith' && group === 'genetics') p.radicalism += 8;
@@ -342,14 +416,26 @@ function applyChoiceEffects(state, choice) {
     state.pops.forEach(p => { if (p.profession === 'nuclear_ops') p.count = Math.floor(p.count * 0.6); });
   }
   if (e.law) Object.entries(e.law).forEach(([g, o]) => enactLaw(state, g, o, '事件驱动'));
-  if (e.ending) state.ending = e.ending;
   if (e.political) state.political = clamp(state.political + e.political, 0, 100);
   if (e.deathRate) state.modifiers.push({ ticksLeft: 30, deathRate: e.deathRate });
 }
 
+const ENDING_FROM_EVENT = {
+  stellar: { cause: 'stellar_launch' },
+  solar: { cause: 'solar_chosen' },
+  schism: { cause: 'schism_ntr' },
+};
+
 function resolveEvent(state, event) {
   const { choice, score, profile } = aiChoose(event.choices, state);
   applyChoiceEffects(state, choice);
+  if (choice.effects?.ending) {
+    const meta = ENDING_FROM_EVENT[choice.effects.ending] || { cause: 'event_choice' };
+    setEnding(state, choice.effects.ending, meta.cause, {
+      event: event.title,
+      choice: choice.label,
+    });
+  }
   const decision = {
     event: event.title,
     choice: choice.label,
@@ -418,25 +504,42 @@ function aiConsiderBuild(state) {
   Object.entries(cost).forEach(([k, v]) => { state.resources[k] -= v; });
   state.compartments[target] = (state.compartments[target] || 0) + 1;
   addLog(state, `AI 下令扩建：${COMPARTMENTS[target].name}`, 'success');
+  recordMilestone(state, 'build', `扩建 ${COMPARTMENTS[target].name}`,
+    `当前数量 ${state.compartments[target]}，矿石 -${cost.ore || 0}`);
+}
+
+function inferExtinctionCause(state, stats) {
+  if (state.resources.food <= 0 && state.resources.volatiles <= 0) return 'ecosystem_collapse';
+  if (state.resources.food <= 5 || stats.morale < 15) return 'starvation';
+  if (state.resources.volatiles <= 5) return 'volatiles_depleted';
+  if (stats.radical > 70 && stats.stability < 25) return 'social_collapse';
+  return 'population_zero';
 }
 
 function checkEnding(state) {
   const stats = aggregateStats(state);
-  if (state.ending) { state.gameOver = true; return state.ending; }
+  if (state.gameOver) return state.ending;
 
-  if (stats.total <= 0) { state.ending = 'extinction'; state.gameOver = true; return 'extinction'; }
+  if (stats.total <= 0) {
+    setEnding(state, 'extinction', inferExtinctionCause(state, stats));
+    return 'extinction';
+  }
   if (state.resources.volatiles <= 0 && state.resources.food <= 0 && state.phase === 2) {
-    state.ending = 'extinction'; state.gameOver = true; return 'extinction';
+    setEnding(state, 'extinction', 'ecosystem_collapse');
+    return 'extinction';
   }
   if (state.phase === 1 && state.tick >= IMPACT_TICK + TICKS_PER_YEAR && stats.total < 500) {
-    state.ending = 'extinction'; state.gameOver = true; return 'extinction';
+    setEnding(state, 'extinction', 'pre_impact_underpop', { population: stats.total });
+    return 'extinction';
   }
   if (state.phase === 2 && state.research >= 1 && state.shipProgress >= 1 && !state.triggeredEvents.has('launch_decision')) {
     const ev = EVENTS.find(e => e.id === 'launch_decision');
     if (ev) resolveEvent(state, ev);
+    if (state.gameOver) return state.ending;
   }
   if (state.phase === 2 && state.tick > IMPACT_TICK + TICKS_PER_YEAR * 30 && stats.stability > 55 && state.research < 0.95) {
-    state.ending = 'solar'; state.gameOver = true; return 'solar';
+    setEnding(state, 'solar', 'solar_stable', { stability: stats.stability, research: state.research });
+    return 'solar';
   }
   return null;
 }
@@ -491,17 +594,115 @@ function fastForwardChunked(state, maxTicks = 50000, chunkSize = 800) {
   });
 }
 
+function analyzeContributingFactors(state) {
+  const stats = aggregateStats(state);
+  const factors = [];
+  const init = state.archive.initial;
+
+  if (init) {
+    const popDelta = stats.total - init.population;
+    factors.push(`人口 ${init.population} → ${stats.total}（${popDelta >= 0 ? '+' : ''}${popDelta}）`);
+    factors.push(`基因多样性 ${(init.diversity * 100).toFixed(0)}% → ${(stats.diversity * 100).toFixed(0)}%`);
+    factors.push(`社会稳定 ${init.stability.toFixed(0)} → ${stats.stability.toFixed(0)}`);
+  }
+
+  if (state.resources.food < 20) factors.push(`终局食物储备偏低（${Math.floor(state.resources.food)}）`);
+  if (state.resources.volatiles < 20) factors.push(`终局挥发物不足（${Math.floor(state.resources.volatiles)}）`);
+  if (stats.morale < 40) factors.push(`士气低迷（均值 ${stats.morale.toFixed(0)}）`);
+  if (stats.radical > 55) factors.push(`激进度过高（${stats.radical.toFixed(0)}），派系动荡`);
+  if (state.archive.laws.length > 5) factors.push(`经历 ${state.archive.laws.length} 次法律修订，社会结构剧烈变动`);
+
+  const crises = state.archive.milestones.filter(m => m.category === 'crisis');
+  if (crises.length) factors.push(`记录 ${crises.length} 次危机事件（饥荒/挥发物/人口骤降）`);
+
+  if (state.endingCause?.event) {
+    factors.push(`关键抉择：${state.endingCause.event} → ${state.endingCause.choice || ''}`);
+  }
+
+  return factors;
+}
+
+function buildStateChangeTable(state) {
+  const rows = [];
+  const init = state.archive.initial;
+  const final = captureStateSnapshot(state);
+
+  if (init) {
+    rows.push({
+      label: '人口',
+      initial: init.population,
+      final: final.population,
+      unit: '人',
+    });
+    RESOURCES.forEach(r => {
+      rows.push({
+        label: RES_LABELS[r],
+        initial: Math.floor(init.resources[r]),
+        final: Math.floor(final.resources[r]),
+        unit: '',
+      });
+    });
+    rows.push({
+      label: '科研进度',
+      initial: (init.research * 100).toFixed(0) + '%',
+      final: (final.research * 100).toFixed(0) + '%',
+      unit: '',
+      isText: true,
+    });
+    rows.push({
+      label: '基因多样性',
+      initial: (init.diversity * 100).toFixed(0) + '%',
+      final: (final.diversity * 100).toFixed(0) + '%',
+      unit: '',
+      isText: true,
+    });
+    rows.push({
+      label: '社会稳定',
+      initial: init.stability.toFixed(0),
+      final: final.stability.toFixed(0),
+      unit: '',
+      isText: true,
+    });
+  }
+
+  return rows;
+}
+
 function generateReport(state) {
   const stats = aggregateStats(state);
   const end = ENDINGS[state.ending] || ENDINGS.extinction;
+  const causeId = state.endingCause?.id || 'population_zero';
+  const cause = ENDING_CAUSES[causeId] || ENDING_CAUSES.population_zero;
+
   const decisions = state.archive.decisions.slice(-15).map(d => `  [${d.date}] ${d.summary}`).join('\n');
   const lawHistory = state.archive.laws.map(l =>
     `  [${l.date}] ${LAW_GROUPS[l.group].name}：${LAW_GROUPS[l.group].options[l.to].name}（${l.reason}）`
   ).join('\n');
 
+  const timeline = state.archive.milestones.map(m => ({
+    date: m.date,
+    category: m.category,
+    title: m.title,
+    detail: m.detail,
+  }));
+
+  const snapshots = state.archive.snapshots;
+  const chartData = {
+    years: snapshots.map(s => s.year),
+    population: snapshots.map(s => s.population ?? s.total ?? 0),
+    food: snapshots.map(s => s.resources?.food ?? 0),
+    stability: snapshots.map(s => s.stability ?? 0),
+  };
+
   return {
     title: end.title,
     desc: end.desc,
+    causeTitle: cause.title,
+    causeDesc: cause.desc,
+    contributingFactors: analyzeContributingFactors(state),
+    stateChanges: buildStateChangeTable(state),
+    timeline,
+    chartData,
     years: getYear(state),
     population: stats.total,
     diversity: (stats.diversity * 100).toFixed(1) + '%',
@@ -509,6 +710,7 @@ function generateReport(state) {
     research: (state.research * 100).toFixed(1) + '%',
     aiProfile: AI_PROFILES[state.aiProfile].name,
     phase: state.phase === 2 ? '太空纪元' : '地球纪元（未完结）',
+    endingId: state.ending,
     decisions,
     lawHistory,
     finalLaws: Object.entries(state.laws).map(([g, k]) =>

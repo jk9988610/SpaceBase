@@ -139,26 +139,86 @@ function renderArchive(state) {
     return;
   }
   const recent = snaps.slice(-8);
-  const maxPop = Math.max(...recent.map(s => s.total), 1);
+  const maxPop = Math.max(...recent.map(s => s.population ?? s.total ?? 0), 1);
   const bars = recent.map(s => {
-    const h = Math.round((s.total / maxPop) * 40);
-    return `<div class="archive-bar" style="height:${h}px" title="Y${s.year} 人口${s.total}"></div>`;
+    const pop = s.population ?? s.total ?? 0;
+    const h = Math.round((pop / maxPop) * 40);
+    return `<div class="archive-bar" style="height:${h}px" title="Y${s.year} 人口${pop}"></div>`;
   }).join('');
+  const latest = recent[recent.length - 1];
   container.innerHTML = `<div class="archive-chart">${bars}</div>
-    <div class="archive-caption">人口时序（近 ${recent.length} 月）</div>`;
+    <div class="archive-caption">人口时序 · 稳定 ${(latest.stability ?? 0).toFixed(0)} · 科研 ${((latest.research ?? 0) * 100).toFixed(0)}%</div>`;
+}
+
+function renderTimelineChart(chartData, field, label, color) {
+  if (!chartData || !chartData[field] || chartData[field].length < 2) return '';
+  const vals = chartData[field];
+  const max = Math.max(...vals, 1);
+  const bars = vals.slice(-24).map((v, i) => {
+    const h = Math.max(2, Math.round((v / max) * 48));
+    return `<div class="timeline-bar" style="height:${h}px;background:${color}" title="${label} ${Math.round(v)}"></div>`;
+  }).join('');
+  return `<div class="timeline-chart-wrap"><span class="timeline-label">${label}</span><div class="timeline-chart">${bars}</div></div>`;
 }
 
 function showEndScreen(state) {
   const report = generateReport(state);
   document.getElementById('end-title').textContent = report.title;
   document.getElementById('end-message').textContent = report.desc;
+
+  const factorList = report.contributingFactors.map(f => `<li>${f}</li>`).join('');
+  const changeRows = report.stateChanges.map(r => {
+    const init = r.isText ? r.initial : r.initial;
+    const fin = r.isText ? r.final : r.final;
+    const delta = r.isText ? '' : (typeof r.final === 'number' && typeof r.initial === 'number'
+      ? `<span class="delta ${r.final >= r.initial ? 'up' : 'down'}">${r.final >= r.initial ? '+' : ''}${r.final - r.initial}</span>` : '');
+    return `<tr><td>${r.label}</td><td>${init}${r.unit}</td><td>${fin}${r.unit}</td><td>${delta}</td></tr>`;
+  }).join('');
+
+  const timelineItems = report.timeline.slice(-20).map(m => `
+    <div class="timeline-item cat-${m.category}">
+      <span class="tl-date">${m.date}</span>
+      <span class="tl-title">${m.title}</span>
+      ${m.detail ? `<span class="tl-detail">${m.detail}</span>` : ''}
+    </div>`).join('');
+
+  const charts = [
+    renderTimelineChart(report.chartData, 'population', '人口', 'var(--accent-cyan)'),
+    renderTimelineChart(report.chartData, 'food', '食物', 'var(--accent-amber)'),
+    renderTimelineChart(report.chartData, 'stability', '稳定', 'var(--safe)'),
+  ].join('');
+
   document.getElementById('end-stats').innerHTML = `
     <div class="report-block">
-      <p>AI 人格：${report.aiProfile} · ${report.phase}</p>
-      <p>存续 ${report.years} 年 · 人口 ${report.population} · 基因多样性 ${report.diversity}</p>
-      <p>社会稳定 ${report.stability} · 科研 ${report.research}</p>
-      <p class="report-laws">终局法律：${report.finalLaws}</p>
+      <p>AI 人格：${report.aiProfile} · ${report.phase} · 存续 ${report.years} 年</p>
+      <p>终局人口 ${report.population} · 多样性 ${report.diversity} · 稳定 ${report.stability} · 科研 ${report.research}</p>
     </div>
+
+    <section class="report-section">
+      <h3 class="report-heading">结局原因</h3>
+      <div class="cause-primary">
+        <strong>${report.causeTitle}</strong>
+        <p>${report.causeDesc}</p>
+      </div>
+      <ul class="cause-factors">${factorList}</ul>
+    </section>
+
+    <section class="report-section">
+      <h3 class="report-heading">基地数据变化（初态 → 终态）</h3>
+      <table class="state-table">
+        <thead><tr><th>指标</th><th>初始</th><th>终局</th><th>变化</th></tr></thead>
+        <tbody>${changeRows}</tbody>
+      </table>
+      <div class="timeline-charts">${charts}</div>
+    </section>
+
+    <section class="report-section">
+      <h3 class="report-heading">太空基地状态变化记录</h3>
+      <div class="timeline-list">${timelineItems || '<p class="empty">无记录</p>'}</div>
+    </section>
+
+    <p class="report-laws">终局法律：${report.finalLaws}</p>
+
     <details class="report-details">
       <summary>关键决策记录</summary>
       <pre>${report.decisions || '无'}</pre>

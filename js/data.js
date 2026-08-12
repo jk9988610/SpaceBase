@@ -113,6 +113,50 @@ const ENDINGS = {
   schism: { title: '断裂的方舟', desc: '派系撕裂了殖民地。一艘低成功率核热飞船消失在深空。' },
 };
 
+/** 结局原因定义 */
+const ENDING_CAUSES = {
+  population_zero: {
+    title: '人口灭绝',
+    desc: '全部 Pop 实例人口归零，基地失去任何劳动力与延续可能。',
+  },
+  starvation: {
+    title: '饥荒失控',
+    desc: '食物产出长期低于消耗，营养不良引发死亡率超过出生率。',
+  },
+  volatiles_depleted: {
+    title: '挥发物耗尽',
+    desc: '水/氮等挥发物泄漏与消耗失衡，生态闭环彻底断裂。',
+  },
+  ecosystem_collapse: {
+    title: '生态级联崩溃',
+    desc: '食物与挥发物同时枯竭，农业舱与生命维持系统相继停摆。',
+  },
+  pre_impact_underpop: {
+    title: '撞击前文明种子不足',
+    desc: '小行星撞击后第一年内人口不足 500，联盟评估文明保存失败。',
+  },
+  social_collapse: {
+    title: '社会体系崩溃',
+    desc: '士气与忠诚度跌至临界点，激进派系瓦解生产秩序。',
+  },
+  solar_chosen: {
+    title: '主动放弃星际远航',
+    desc: 'AI 决策保留太阳系建设，拒绝发射世代飞船。',
+  },
+  solar_stable: {
+    title: '太阳系自主存续达标',
+    desc: '太空纪元 30 年后社会稳定、生态自持，未达远航科技门槛。',
+  },
+  stellar_launch: {
+    title: '聚变世代飞船启航',
+    desc: '科研达标且飞船建造完成，按基因与技能选拔乘员奔赴比邻星。',
+  },
+  schism_ntr: {
+    title: '派系强行核热发射',
+    desc: '激进派系绕过理事会，强行启动低成功率核热慢速世代飞船。',
+  },
+};
+
 /** 事件库：AI 自动裁决 */
 const EVENTS = [
   {
@@ -214,6 +258,27 @@ const EVENTS = [
       { id: 'concede', label: '让步撤回', effects: { political: 10, morale: 8, radical: -8 }, score: { loyalty: 1.5, morale: 1 } },
       { id: 'enforce', label: '强制执行', effects: { loyalty: -10, radical: 12, outputPenalty: 0.6, duration: 10 }, score: { loyalty: -1, resources: 0.5 } },
       { id: 'negotiate', label: '派系谈判', effects: { political: -10, morale: 3, loyalty: 5 }, score: { loyalty: 1.2 } },
+    ],
+  },
+  {
+    id: 'radiation',
+    title: '辐射泄漏',
+    phase: 2,
+    text: '裂变舱屏蔽层老化，微量辐射扩散至相邻人居舱段。',
+    choices: [
+      { id: 'shield', label: '投入矿石加固屏蔽', effects: { ore: -25, morale: 3 }, score: { resources: 1, morale: 0.5 } },
+      { id: 'evacuate', label: '疏散舱段', effects: { pop: -60, morale: -8 }, score: { population: -1, morale: -0.5 } },
+      { id: 'ignore', label: '维持运转', effects: { deathRate: 1.3, radical: 10 }, score: { resources: 1.5, morale: -1.5 } },
+    ],
+  },
+  {
+    id: 'mining_strike',
+    title: '采矿舱罢工',
+    trigger: { moraleBelow: 40 },
+    text: '采矿技师 Pop 拒绝进入小行星船坞，抗议劳动法案。',
+    choices: [
+      { id: 'reform_labor', label: '修订劳动法案', effects: { law: { labor: 'standard' }, political: -12 }, score: { morale: 1.5, loyalty: 1 } },
+      { id: 'crackdown', label: '强制复工', effects: { morale: -15, ore: 10, radical: 15 }, score: { loyalty: -1, resources: 1 } },
     ],
   },
 ];

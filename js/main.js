@@ -28,29 +28,37 @@ function runLoop() {
   const interval = 80;
 
   function frame(now) {
-    if (!gameState || gameState.gameOver) return;
-    if (speed === 0) { loopId = requestAnimationFrame(frame); return; }
+    try {
+      if (!gameState || gameState.gameOver) return;
+      if (speed === 0) { loopId = requestAnimationFrame(frame); return; }
 
-    acc += now - last;
-    last = now;
-    const step = interval / speed;
+      if (last === 0) last = now;
+      acc += now - last;
+      last = now;
+      const step = interval / speed;
 
-    while (acc >= step) {
-      for (let i = 0; i < ticksPerFrame; i++) {
+      while (acc >= step) {
+        for (let i = 0; i < ticksPerFrame; i++) {
+          if (gameState.gameOver) break;
+          simulateTick(gameState);
+        }
+        acc -= step;
         if (gameState.gameOver) break;
-        simulateTick(gameState);
       }
-      acc -= step;
-      if (gameState.gameOver) break;
-    }
 
-    renderGame(gameState);
-    if (gameState.gameOver) {
-      showEndScreen(gameState);
-      return;
+      renderGame(gameState);
+      if (gameState.gameOver) {
+        showEndScreen(gameState);
+        return;
+      }
+      loopId = requestAnimationFrame(frame);
+    } catch (err) {
+      console.error(err);
+      addLog(gameState, `模拟错误：${err.message}`, 'danger');
+      renderGame(gameState);
     }
-    loopId = requestAnimationFrame(frame);
   }
+  last = 0;
   loopId = requestAnimationFrame(frame);
 }
 
@@ -123,6 +131,7 @@ async function runAllEndings(profiles) {
       ${results.map(r => `
         <div class="sim-card">
           <div class="sim-ending">${r.title}</div>
+          <div class="sim-cause">${r.causeTitle || ''}</div>
           <div class="sim-profile">${r.aiProfile}</div>
           <div class="sim-detail">${r.years}年 · 人口${r.population} · ${r.diversity}</div>
         </div>`).join('')}
