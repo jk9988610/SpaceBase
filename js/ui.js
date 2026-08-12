@@ -40,6 +40,8 @@ function renderGame(state) {
   });
 
   document.getElementById('stat-pop').textContent = stats.total;
+  const peakEl = document.getElementById('stat-peak');
+  if (peakEl) peakEl.textContent = state.peakPopulation || stats.total;
   document.getElementById('stat-diversity').textContent = (stats.diversity * 100).toFixed(0) + '%';
   document.getElementById('stat-stability').textContent = stats.stability.toFixed(0);
   document.getElementById('stat-research').textContent = (state.research * 100).toFixed(0) + '%';
@@ -180,6 +182,12 @@ function showEndScreen(state) {
 
   const factorList = report.contributingFactors.map(f => `<li>${f}</li>`).join('');
   const changeRows = report.stateChanges.map(r => {
+    if (r.isPeak) {
+      return `<tr class="row-peak"><td>${r.label}</td><td colspan="2">${r.final}${r.unit ? ' ' + r.unit : ''}</td><td>—</td></tr>`;
+    }
+    if (r.isAnchor) {
+      return `<tr><td>${r.label}</td><td>${r.initial}${r.unit}</td><td colspan="2">基准</td></tr>`;
+    }
     const init = r.isText ? r.initial : r.initial;
     const fin = r.isText ? r.final : r.final;
     const delta = r.isText ? '' : (typeof r.final === 'number' && typeof r.initial === 'number'
@@ -200,11 +208,17 @@ function showEndScreen(state) {
     renderTimelineChart(report.chartData, 'stability', '稳定', 'var(--safe)'),
   ].join('');
 
+  const resourceWarn = (report.finalResources?.food <= 0 || report.finalResources?.energy <= 0)
+    ? `<div class="resource-warning">⚠ 终局资源枯竭：食物 ${Math.floor(report.finalResources?.food || 0)} · 能源 ${Math.floor(report.finalResources?.energy || 0)}</div>`
+    : '';
+
   document.getElementById('end-stats').innerHTML = `
     <div class="report-block">
       <p>AI 人格：${report.aiProfile} · ${report.phase} · 存续 ${report.years} 年 · 种子 ${report.simSeed}</p>
-      <p>终局人口 ${report.population} · 多样性 ${report.diversity} · 稳定 ${report.stability} · 科研 ${report.research}</p>
+      <p>人口 初始→峰值→终局：${report.stateChanges.find(r => r.isAnchor)?.initial || '?'} → ${report.peakPopulation}（Y${report.peakPopulationYear}）→ ${report.population}</p>
+      <p>多样性 ${report.diversity} · 社会稳定 ${report.stability} · 生态健康 ${report.resourceHealth} · 科研 ${report.research}</p>
     </div>
+    ${resourceWarn}
 
     <section class="report-section">
       <h3 class="report-heading">结局原因</h3>

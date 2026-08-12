@@ -219,6 +219,21 @@ body {
   line-height: 1.6;
 }
 
+.resource-warning {
+  background: rgba(196, 75, 75, 0.12);
+  border: 1px solid var(--accent-red);
+  color: var(--accent-red);
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.row-peak td {
+  color: var(--accent-amber);
+  font-weight: 600;
+}
+
 .cause-factors {
   margin: 0;
   padding-left: 1.25rem;
@@ -330,6 +345,12 @@ body {
   color: var(--text-secondary);
   font-size: 0.7rem;
   margin-top: 0.15rem;
+}
+
+.sim-cause {
+  font-size: 0.7rem;
+  color: var(--accent-red);
+  margin: 0.2rem 0;
 }
 
 .sim-seed {

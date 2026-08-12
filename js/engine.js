@@ -98,10 +98,18 @@ function createInitialState(aiProfile = 'survival') {
     log: [],
     gameOver: false,
     shipProgress: 0,
+    peakPopulation: 0,
+    peakPopulationYear: 0,
+    resourceCrisisTicks: 0,
+    populationDeclineMonths: 0,
+    lastMonthPopulation: 0,
   };
 
   state.archive.initial = captureStateSnapshot(state);
   const initPop = state.pops.reduce((s, p) => s + p.count, 0);
+  state.peakPopulation = initPop;
+  state.peakPopulationYear = 0;
+  state.lastMonthPopulation = initPop;
   recordMilestone(state, 'baseline', '首座太空基地建成',
     `首批移民 ${initPop} 人入驻，地球倒计时 ${EARTH_COUNTDOWN_YEARS} 年开始`);
 
@@ -169,12 +177,40 @@ function calcDiversity(state) {
   return clamp(base + (lawImm.diversity || 0), 0, 1);
 }
 
+function calcResourceHealth(state, total) {
+  if (!total) return 0;
+  const foodR = clamp(state.resources.food / (total * 0.05), 0, 1);
+  const energyR = clamp(state.resources.energy / (total * 0.04), 0, 1);
+  const volR = clamp(state.resources.volatiles / (total * 0.03), 0, 1);
+  return (foodR + energyR + volR) / 3;
+}
+
+function isEcologicallyViable(state) {
+  const stats = aggregateStats(state);
+  const total = stats.total;
+  if (!total) return false;
+  return (
+    state.resources.food > total * 0.04 &&
+    state.resources.energy > total * 0.03 &&
+    state.resources.volatiles > total * 0.015
+  );
+}
+
+function isPopulationStable(state) {
+  const stats = aggregateStats(state);
+  if (!stats.total) return false;
+  if (state.peakPopulation > 0 && stats.total < state.peakPopulation * 0.45) return false;
+  return stats.birthRate >= stats.deathRate * 0.9;
+}
+
 function aggregateStats(state) {
   const total = state.pops.reduce((s, p) => s + p.count, 0);
-  if (!total) return { total: 0, morale: 0, loyalty: 0, radical: 0, diversity: 0, stability: 0, birthRate: 0, deathRate: 0 };
+  if (!total) return { total: 0, morale: 0, loyalty: 0, radical: 0, diversity: 0, stability: 0, birthRate: 0, deathRate: 0, resourceHealth: 0 };
 
   const w = (fn) => state.pops.reduce((s, p) => s + fn(p) * p.count, 0) / total;
   const diversity = calcDiversity(state);
+  const resourceHealth = calcResourceHealth(state, total);
+  const social = w(p => p.loyalty * 0.4 + p.morale * 0.4 + (100 - p.radicalism) * 0.2);
 
   return {
     total,
@@ -182,7 +218,8 @@ function aggregateStats(state) {
     loyalty: w(p => p.loyalty),
     radical: w(p => p.radicalism),
     diversity,
-    stability: w(p => p.loyalty * 0.4 + p.morale * 0.4 + (100 - p.radicalism) * 0.2),
+    resourceHealth,
+    stability: social * (0.35 + 0.65 * resourceHealth),
     birthRate: calcBirthRate(state),
     deathRate: calcDeathRate(state),
   };
@@ -202,7 +239,11 @@ function calcDeathRate(state) {
   const lawLabor = LAW_GROUPS.labor.options[state.laws.labor];
   const lawGen = LAW_GROUPS.genetics.options[state.laws.genetics];
   let rate = 0.0004;
-  if (state.resources.food < total * 0.03) rate *= 2.5;
+  if (state.resources.food < total * 0.05) rate *= 2;
+  if (state.resources.food < total * 0.02) rate *= 2.5;
+  if (state.resources.food <= 0) rate *= 3;
+  if (state.resources.energy < total * 0.02) rate *= 1.8;
+  if (state.resources.energy <= 0) rate *= 2;
   if (state.resources.volatiles < total * 0.02) rate *= 2;
   rate *= (lawLabor.deathRate || 1) * (lawGen.deathRate || 1) * state.inbreedRisk;
   return rate;
@@ -236,11 +277,11 @@ function tickCompartments(state) {
 
   const agriSlots = counts.agriculture * COMPARTMENTS.agriculture.slots;
   const agriStaff = Math.min(profCounts.eco_engineer || 0, agriSlots * 50);
-  food += (agriStaff / 50) * COMPARTMENTS.agriculture.output.food * lm.output * 1.15;
+  food += (agriStaff / 50) * COMPARTMENTS.agriculture.output.food * lm.output * 1.35;
 
   const reactSlots = counts.reactor * COMPARTMENTS.reactor.slots;
   const reactStaff = Math.min(profCounts.nuclear_ops || 0, reactSlots * 40);
-  energy += (reactStaff / 40) * COMPARTMENTS.reactor.output.energy * lm.output;
+  energy += (reactStaff / 40) * COMPARTMENTS.reactor.output.energy * lm.output * 1.1;
 
   const mineSlots = counts.shipyard * COMPARTMENTS.shipyard.slots;
   const mineStaff = Math.min(profCounts.miner || 0, mineSlots * 50);
@@ -253,8 +294,8 @@ function tickCompartments(state) {
   state.research = clamp(state.research + (labStaff / 30) * 0.0003 * lm.research * (gov.research || 1), 0, 1);
   energy -= labStaff / 30;
 
-  energy -= total * 0.008;
-  food -= total * 0.012 * lm.foodCost;
+  energy -= total * 0.007;
+  food -= total * 0.010 * lm.foodCost;
   state.resources.volatiles -= state.leakRate * lm.volatility;
   state.resources.volatiles -= total * 0.003;
 
@@ -281,16 +322,42 @@ function tickPops(state) {
     p.laborForce = Math.floor(p.count * 0.75);
     p.dependents = p.count - p.laborForce;
 
-    p.morale = clamp(p.morale + lm.morale * 0.01 + (state.resources.food > stats.total * 0.04 ? 0.05 : -0.15), 0, 100);
+    const starving = state.resources.food < stats.total * 0.03;
+    const energyCrisis = state.resources.energy < stats.total * 0.02;
+    let moraleDelta = lm.morale * 0.01;
+    if (state.resources.food > stats.total * 0.05) moraleDelta += 0.05;
+    else if (starving) moraleDelta -= 0.35;
+    else moraleDelta -= 0.15;
+    if (energyCrisis) moraleDelta -= 0.15;
+    p.morale = clamp(p.morale + moraleDelta, 0, 100);
     p.loyalty = clamp(p.loyalty + (stats.stability > 50 ? 0.02 : -0.08), 0, 100);
     p.radicalism = clamp(p.radicalism + (p.morale < 35 ? 0.1 : -0.03) + lm.morale * -0.005, 0, 100);
   });
 
   state.pops = state.pops.filter(p => p.count > 0);
 
+  const newTotal = state.pops.reduce((s, p) => s + p.count, 0);
+  if (newTotal > state.peakPopulation) {
+    state.peakPopulation = newTotal;
+    state.peakPopulationYear = getYear(state);
+  }
+
+  if (state.tick % TICKS_PER_MONTH === 0) {
+    if (state.lastMonthPopulation > 0 && newTotal < state.lastMonthPopulation * 0.97) {
+      state.populationDeclineMonths++;
+    } else {
+      state.populationDeclineMonths = Math.max(0, state.populationDeclineMonths - 1);
+    }
+    state.lastMonthPopulation = newTotal;
+  }
+
   if (state.phase === 1 && !state.immigrationClosed && state.tick % (TICKS_PER_MONTH * 6) === 0 && getYear(state) < 48) {
+    const dailyFoodNeed = newTotal * 0.012 * getLawModifiers(state).foodCost;
+    const foodDays = dailyFoodNeed > 0 ? state.resources.food / dailyFoodNeed : 0;
+    if (foodDays < 90) return;
+
     const imm = LAW_GROUPS.immigration.options[state.laws.immigration];
-    const batch = state.laws.immigration === 'open' ? rand(30, 80) : state.laws.immigration === 'selective' ? rand(10, 30) : rand(5, 20);
+    const batch = state.laws.immigration === 'open' ? rand(20, 50) : state.laws.immigration === 'selective' ? rand(8, 20) : rand(3, 12);
     state.pops.push(createPop('colonist', batch, { geneGroup: pick(GENE_GROUPS), morale: 45 }));
     addLog(state, `地球移民批次抵达：+${batch} 人`, 'important');
   }
@@ -358,6 +425,12 @@ function archiveSnapshot(state) {
     }
     if (snap.research >= 1 && prev.research < 1) {
       recordMilestone(state, 'tech', '科研完全体', '世代飞船技术理论完备');
+    }
+    if (snap.shipProgress >= 0.5 && (prev.shipProgress ?? 0) < 0.5) {
+      recordMilestone(state, 'tech', '世代飞船船体 50%', `建造进度 ${(snap.shipProgress * 100).toFixed(0)}%`);
+    }
+    if (snap.shipProgress >= 1 && (prev.shipProgress ?? 0) < 1) {
+      recordMilestone(state, 'tech', '世代飞船竣工', '聚变推进世代飞船待命发射');
     }
   }
 }
@@ -518,8 +591,8 @@ function aiConsiderBuild(state) {
   if (state.resources.ore < 15) return;
 
   let target = null;
-  if (state.resources.food < stats.total * 0.08) target = 'agriculture';
-  else if (state.resources.energy < stats.total * 0.05) target = 'reactor';
+  if (state.resources.food < stats.total * 0.12) target = 'agriculture';
+  else if (state.resources.energy < stats.total * 0.08) target = 'reactor';
   else if (state.resources.ore < 40 && state.phase === 2) target = 'shipyard';
   else if (state.research < 0.6 && state.compartments.lab < 3) target = 'lab';
   else if (stats.total > state.compartments.habitat * 400) target = 'habitat';
@@ -538,10 +611,12 @@ function aiConsiderBuild(state) {
 }
 
 function inferExtinctionCause(state, stats) {
+  if (state.resources.food <= 0 && state.resources.energy <= 0) return 'ecosystem_collapse';
   if (state.resources.food <= 0 && state.resources.volatiles <= 0) return 'ecosystem_collapse';
   if (state.resources.food <= 5 || stats.morale < 15) return 'starvation';
   if (state.resources.volatiles <= 5) return 'volatiles_depleted';
   if (stats.radical > 70 && stats.stability < 25) return 'social_collapse';
+  if (state.peakPopulation > 0 && stats.total < state.peakPopulation * 0.2) return 'starvation';
   return 'population_zero';
 }
 
@@ -553,23 +628,56 @@ function checkEnding(state) {
     setEnding(state, 'extinction', inferExtinctionCause(state, stats));
     return 'extinction';
   }
+
+  const foodZero = state.resources.food <= 0;
+  const energyZero = state.resources.energy <= 0;
+  if (foodZero && energyZero) {
+    state.resourceCrisisTicks++;
+    if (state.resourceCrisisTicks >= TICKS_PER_MONTH * 2) {
+      setEnding(state, 'extinction', 'ecosystem_collapse', {
+        food: state.resources.food, energy: state.resources.energy,
+      });
+      return 'extinction';
+    }
+  } else {
+    state.resourceCrisisTicks = 0;
+  }
+
   if (state.resources.volatiles <= 0 && state.resources.food <= 0 && state.phase === 2) {
     setEnding(state, 'extinction', 'ecosystem_collapse');
     return 'extinction';
   }
+
   if (state.phase === 1 && state.tick >= IMPACT_TICK + TICKS_PER_YEAR && stats.total < 500) {
     setEnding(state, 'extinction', 'pre_impact_underpop', { population: stats.total });
     return 'extinction';
   }
+
   if (state.phase === 2 && state.research >= 1 && state.shipProgress >= 1 && !state.triggeredEvents.has('launch_decision')) {
     const ev = EVENTS.find(e => e.id === 'launch_decision');
     if (ev) resolveEvent(state, ev);
     if (state.gameOver) return state.ending;
   }
-  if (state.phase === 2 && state.tick > IMPACT_TICK + TICKS_PER_YEAR * 30 && stats.stability > 55 && state.research < 0.95) {
-    setEnding(state, 'solar', 'solar_stable', { stability: stats.stability, research: state.research });
+
+  const solarWindow = state.tick > IMPACT_TICK + TICKS_PER_YEAR * 30;
+  const canSolar = solarWindow
+    && stats.stability > 55
+    && state.research < 0.95
+    && isEcologicallyViable(state)
+    && isPopulationStable(state)
+    && stats.total >= 600
+    && state.populationDeclineMonths < 6;
+
+  if (state.phase === 2 && canSolar) {
+    setEnding(state, 'solar', 'solar_stable', {
+      stability: stats.stability,
+      research: state.research,
+      population: stats.total,
+      resourceHealth: stats.resourceHealth,
+    });
     return 'solar';
   }
+
   return null;
 }
 
@@ -642,20 +750,27 @@ function analyzeContributingFactors(state) {
   const init = state.archive.initial;
 
   if (init) {
-    const popDelta = stats.total - init.population;
-    factors.push(`人口 ${init.population} → ${stats.total}（${popDelta >= 0 ? '+' : ''}${popDelta}）`);
+    factors.push(`人口 初始 ${init.population} → 峰值 ${state.peakPopulation}（Y${state.peakPopulationYear}）→ 终局 ${stats.total}`);
     factors.push(`基因多样性 ${(init.diversity * 100).toFixed(0)}% → ${(stats.diversity * 100).toFixed(0)}%`);
-    factors.push(`社会稳定 ${init.stability.toFixed(0)} → ${stats.stability.toFixed(0)}`);
+    factors.push(`社会稳定 ${init.stability.toFixed(0)} → ${stats.stability.toFixed(0)} · 生态健康 ${(stats.resourceHealth * 100).toFixed(0)}%`);
   }
 
-  if (state.resources.food < 20) factors.push(`终局食物储备偏低（${Math.floor(state.resources.food)}）`);
+  if (state.peakPopulation > stats.total * 1.15) {
+    const drop = ((1 - stats.total / state.peakPopulation) * 100).toFixed(0);
+    factors.push(`人口自峰值萎缩 ${drop}%（${state.peakPopulation} → ${stats.total}）`);
+  }
+
+  if (state.resources.food <= 0) factors.push('终局食物储备归零，农业系统停摆');
+  else if (state.resources.food < 20) factors.push(`终局食物储备偏低（${Math.floor(state.resources.food)}）`);
+  if (state.resources.energy <= 0) factors.push('终局能源耗尽，舱室无法满负荷运转');
   if (state.resources.volatiles < 20) factors.push(`终局挥发物不足（${Math.floor(state.resources.volatiles)}）`);
   if (stats.morale < 40) factors.push(`士气低迷（均值 ${stats.morale.toFixed(0)}）`);
   if (stats.radical > 55) factors.push(`激进度过高（${stats.radical.toFixed(0)}），派系动荡`);
-  if (state.archive.laws.length > 5) factors.push(`经历 ${state.archive.laws.length} 次法律修订，社会结构剧烈变动`);
+  if (state.populationDeclineMonths >= 6) factors.push(`连续 ${state.populationDeclineMonths} 个月人口净下降`);
+  if (state.archive.laws.length > 5) factors.push(`经历 ${state.archive.laws.length} 次法律修订`);
 
   const crises = state.archive.milestones.filter(m => m.category === 'crisis');
-  if (crises.length) factors.push(`记录 ${crises.length} 次危机事件（饥荒/挥发物/人口骤降）`);
+  if (crises.length) factors.push(`记录 ${crises.length} 次危机事件`);
 
   if (state.endingCause?.event) {
     factors.push(`关键抉择：${state.endingCause.event} → ${state.endingCause.choice || ''}`);
@@ -668,13 +783,18 @@ function buildStateChangeTable(state) {
   const rows = [];
   const init = state.archive.initial;
   const final = captureStateSnapshot(state);
+  const stats = aggregateStats(state);
 
   if (init) {
     rows.push({
-      label: '人口',
-      initial: init.population,
-      final: final.population,
-      unit: '人',
+      label: '人口（初始）', initial: init.population, final: init.population, unit: '人', isAnchor: true,
+    });
+    rows.push({
+      label: '人口（峰值）', initial: state.peakPopulation, final: state.peakPopulation,
+      unit: `人 · Y${state.peakPopulationYear}`, isPeak: true,
+    });
+    rows.push({
+      label: '人口（终局）', initial: init.population, final: final.population, unit: '人',
     });
     RESOURCES.forEach(r => {
       rows.push({
@@ -702,6 +822,13 @@ function buildStateChangeTable(state) {
       label: '社会稳定',
       initial: init.stability.toFixed(0),
       final: final.stability.toFixed(0),
+      unit: '',
+      isText: true,
+    });
+    rows.push({
+      label: '生态健康',
+      initial: (calcResourceHealth({ resources: init.resources }, init.population) * 100).toFixed(0) + '%',
+      final: (stats.resourceHealth * 100).toFixed(0) + '%',
       unit: '',
       isText: true,
     });
@@ -747,6 +874,10 @@ function generateReport(state) {
     chartData,
     years: getYear(state),
     population: stats.total,
+    peakPopulation: state.peakPopulation,
+    peakPopulationYear: state.peakPopulationYear,
+    resourceHealth: (stats.resourceHealth * 100).toFixed(0) + '%',
+    finalResources: { ...state.resources },
     diversity: (stats.diversity * 100).toFixed(1) + '%',
     stability: stats.stability.toFixed(1),
     research: (state.research * 100).toFixed(1) + '%',
