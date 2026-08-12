@@ -2,6 +2,9 @@
  * 太空基地 Spacebase — 静态数据：法律、事件、舱室、AI人格、结局
  */
 
+/** 构建版本号：更新资源缓存 */
+const BUILD_VERSION = '20260812-survival-v2';
+
 const TICKS_PER_MONTH = 30;
 const TICKS_PER_YEAR = 365;
 const EARTH_COUNTDOWN_YEARS = 50;

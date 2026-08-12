@@ -5,8 +5,9 @@
 let loopId = null;
 let speed = 1;
 let ticksPerFrame = 1;
+let pendingWatchProfile = null;
 
-function startSimulation(profile) {
+function startWatchMode(profile) {
   if (loopId) cancelAnimationFrame(loopId);
   gameState = createInitialState(profile);
   addLog(gameState, '文明种子计划启动。AI 统筹官接管全部决策权。', 'important');
@@ -17,6 +18,34 @@ function startSimulation(profile) {
   ticksPerFrame = 1;
   updateSpeedLabel(speed);
   runLoop();
+}
+
+/** 单人格极速推演：与批量推演共用同一路径，保证结果一致 */
+async function startFastSimulation(profile) {
+  if (loopId) cancelAnimationFrame(loopId);
+  const container = document.getElementById('sim-results');
+  const buttons = document.querySelectorAll('[data-profile], #btn-sim-all, #btn-watch');
+  container.hidden = false;
+  container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[profile].name}…</p>`;
+  buttons.forEach(b => { b.disabled = true; });
+
+  try {
+    gameState = await runProfileSimulationAsync(profile, SIM_MAX_TICKS);
+    container.hidden = true;
+    if (gameState.gameOver) {
+      showEndScreen(gameState);
+    } else {
+      addLog(gameState, `推演 ${gameState.tick} 日未达结局（上限 ${SIM_MAX_TICKS}）`, 'important');
+      showScreen('game-screen');
+      renderGame(gameState);
+      runLoop();
+    }
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<p class="sim-error">推演失败：${err.message}。请强制刷新页面（Ctrl+Shift+R）后重试。</p>`;
+  } finally {
+    buttons.forEach(b => { b.disabled = false; });
+  }
 }
 
 function runLoop() {
@@ -66,7 +95,7 @@ function setSpeed(s) {
   updateSpeedLabel(s);
 }
 
-/** 极速推演：从种子重置后跑完整路径，与批量推演完全一致 */
+/** 观战界面内极速推演 */
 async function fastSimulate() {
   if (!gameState) return;
   const profile = gameState.aiProfile;
@@ -83,13 +112,39 @@ async function fastSimulate() {
   }
 }
 
-function initUI() {
-  document.querySelectorAll('[data-profile]').forEach(btn => {
-    btn.onclick = () => startSimulation(btn.dataset.profile);
+function showWatchProfilePicker() {
+  const container = document.getElementById('sim-results');
+  container.hidden = false;
+  container.innerHTML = `
+    <p class="profile-label">观战模式：选择人格</p>
+    <div class="profile-grid profile-grid-compact">
+      ${Object.keys(AI_PROFILES).map(p =>
+        `<button class="btn btn-profile btn-profile-sm" data-watch="${p}">${AI_PROFILES[p].name}</button>`
+      ).join('')}
+    </div>`;
+  container.querySelectorAll('[data-watch]').forEach(btn => {
+    btn.onclick = () => {
+      container.hidden = true;
+      startWatchMode(btn.dataset.watch);
+    };
   });
+}
+
+function initUI() {
+  const verEl = document.getElementById('build-version');
+  if (verEl && typeof BUILD_VERSION !== 'undefined') {
+    verEl.textContent = `版本 ${BUILD_VERSION}`;
+  }
+
+  document.querySelectorAll('[data-profile]').forEach(btn => {
+    btn.onclick = () => startFastSimulation(btn.dataset.profile);
+  });
+
+  document.getElementById('btn-watch').onclick = () => showWatchProfilePicker();
 
   document.getElementById('btn-restart').onclick = () => {
     if (loopId) cancelAnimationFrame(loopId);
+    document.getElementById('sim-results').hidden = true;
     showScreen('start-screen');
   };
 
@@ -108,31 +163,40 @@ function initUI() {
 async function runAllEndings(profiles) {
   const container = document.getElementById('sim-results');
   const btn = document.getElementById('btn-sim-all');
+  const profileBtns = document.querySelectorAll('[data-profile], #btn-watch');
   container.hidden = false;
   btn.disabled = true;
+  profileBtns.forEach(b => { b.disabled = true; });
 
   const results = [];
-  for (let idx = 0; idx < profiles.length; idx++) {
-    const p = profiles[idx];
-    container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[p].name}（${idx + 1}/${profiles.length}）…</p>`;
-    const s = await runProfileSimulationAsync(p, SIM_MAX_TICKS);
-    results.push(generateReport(s));
-    await new Promise(r => setTimeout(r, 0));
-  }
+  try {
+    for (let idx = 0; idx < profiles.length; idx++) {
+      const p = profiles[idx];
+      container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[p].name}（${idx + 1}/${profiles.length}）…</p>`;
+      const s = await runProfileSimulationAsync(p, SIM_MAX_TICKS);
+      results.push(generateReport(s));
+      await new Promise(r => setTimeout(r, 0));
+    }
 
-  btn.disabled = false;
-  container.innerHTML = `
-    <h3>全人格推演结果 <span class="sim-note">（同人格可复现）</span></h3>
-    <div class="sim-grid">
-      ${results.map(r => `
-        <div class="sim-card">
-          <div class="sim-ending">${r.title}</div>
-          <div class="sim-cause">${r.causeTitle || ''}</div>
-          <div class="sim-profile">${r.aiProfile}</div>
-          <div class="sim-detail">${r.years}年 · 人口${r.population} · ${r.diversity}</div>
-          <div class="sim-seed">种子 ${r.simSeed}</div>
-        </div>`).join('')}
-    </div>`;
+    container.innerHTML = `
+      <h3>全人格推演结果 <span class="sim-note">（同人格可复现 · ${BUILD_VERSION}）</span></h3>
+      <div class="sim-grid">
+        ${results.map(r => `
+          <div class="sim-card">
+            <div class="sim-ending">${r.title}</div>
+            <div class="sim-cause">${r.causeTitle || ''}</div>
+            <div class="sim-profile">${r.aiProfile}</div>
+            <div class="sim-detail">${r.years}年 · 人口${r.population} · ${r.diversity}</div>
+            <div class="sim-seed">种子 ${r.simSeed}</div>
+          </div>`).join('')}
+      </div>`;
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = `<p class="sim-error">批量推演失败：${err.message}。请强制刷新（Ctrl+Shift+R）。</p>`;
+  } finally {
+    btn.disabled = false;
+    profileBtns.forEach(b => { b.disabled = false; });
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initUI);
