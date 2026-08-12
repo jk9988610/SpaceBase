@@ -547,11 +547,16 @@ function renderActions() {
   if (state.phase === 'day') {
     nightNote.hidden = true;
     DAY_ACTIONS.forEach(action => {
-      const affordable = canAfford(action.cost);
+      let cost = action.cost;
+      if (action.id === 'heal') {
+        const hasMedic = state.survivors.some(s => s.alive && s.role === 'medic');
+        cost = hasMedic ? null : { medicine: 1 };
+      }
+      const affordable = canAfford(cost);
       const disabled = !affordable || state.actionsToday >= state.maxActionsPerDay;
-      const costStr = action.cost
-        ? Object.entries(action.cost).map(([k, v]) => `${resLabel(k)} ${v}`).join(' · ')
-        : '';
+      const costStr = cost
+        ? Object.entries(cost).map(([k, v]) => `${resLabel(k)} ${v}`).join(' · ')
+        : action.id === 'heal' ? '医护员在场 · 免费' : '';
       const btn = document.createElement('button');
       btn.className = 'btn btn-action';
       btn.disabled = disabled;
