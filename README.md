@@ -1,39 +1,56 @@
-# 星港余烬 · SpaceBase
+# 太空基地 · Spacebase
 
-一款太空站生存文字游戏，灵感来自《这是我的战争》。
+AI 自动推演的太空文明种子生存模拟。融合《这是我的战争》道德事件、《辐射避难所》舱室管理、《维多利亚3》Pop 涌现与法律体系。
 
-在封锁的轨道站中管理资源、做出道德抉择、派遣搜刮任务，带领幸存者撑到救援抵达。
+**在线游玩**：https://jk9988610.github.io/SpaceBase/
 
-## 在线游玩
+## 玩法
 
-**https://jk9988610.github.io/SpaceBase/**
+无需人类操作。选择 AI 统筹官人格后，观看其自动：
+
+- 处理道德两难文字事件（2–4 选项，无完美解）
+- 修订 6 系法律（移民、劳动、福利、基因、治理、经济）
+- 扩建舱室、调配 Pop 岗位
+- 推进地球纪元 → 太空纪元 → 各类结局
+
+### 控制
+
+| 按钮 | 功能 |
+|------|------|
+| 1× / 4× / 16× | 观战调速 |
+| 极速→结局 | 批处理推演至结局 |
+| 批量推演全部人格结局 | 一次运行 5 种 AI 人格并对比结果 |
+
+### 结局
+
+- **文明种子：熄灭** — 灭绝
+- **太阳系公民** — 太阳系存续
+- **双星文明** — 聚变世代飞船启航
+- **断裂的方舟** — 分裂悲剧
+
+## 设计文档
+
+完整 GDD 见 [docs/GDD.md](docs/GDD.md)
 
 ## 本地运行
 
-直接用浏览器打开 `index.html` 即可，无需构建步骤。
-
 ```bash
-# 或使用简易 HTTP 服务
 python3 -m http.server 8080
 # 访问 http://localhost:8080
 ```
 
-## GitHub Pages 部署（Actions 模式）
+## 项目结构
 
-本仓库已配置 GitHub Actions 自动部署。**首次使用需手动开启 Pages：**
+```
+index.html          # 观战 UI
+css/style.css
+js/data.js          # 法律、事件、常量
+js/engine.js        # Pop 模拟、AI、档案
+js/ui.js            # 界面渲染
+js/main.js          # 游戏循环
+docs/GDD.md         # 设计文档
+```
 
-1. 打开仓库 [Settings → Pages](https://github.com/jk9988610/SpaceBase/settings/pages)
-2. **Build and deployment** → **Source** 选择 **GitHub Actions**
-3. 保存后，进入 [Actions](https://github.com/jk9988610/SpaceBase/actions) 页面，重新运行 **Deploy GitHub Pages** 工作流
+## 部署
 
-之后每次推送到 `main` 分支都会自动部署。站点地址：
-
-**https://jk9988610.github.io/SpaceBase/**
-
-## 玩法简介
-
-- **白昼**：修缮、配给、治疗、发送救援信号（每日最多 3 项行动）
-- **夜晚**：派遣幸存者搜刮货运舱、医疗舱、反应堆区等危险区域
-- **资源**：氧气、食物、净水、药品、废料——任何一项耗尽都可能导致灭团
-- **胜利**：累计发送 3 次救援信号并坚持到救援抵达
-- **失败**：全员阵亡或氧气耗尽
+推送至 `main` 后 GitHub Actions 自动部署至 Pages。详见 [Settings → Pages](https://github.com/jk9988610/SpaceBase/settings/pages)（Source: GitHub Actions）。

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="星港余烬 - 一款太空站生存文字游戏，灵感来自《这是我的战争》">
-  <title>星港余烬 · SpaceBase</title>
+  <meta name="description" content="太空基地 Spacebase - AI 自动推演文明种子生存模拟">
+  <title>太空基地 · Spacebase</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -18,104 +18,110 @@
   <div id="start-screen" class="screen active">
     <div class="start-content">
       <div class="logo-block">
-        <span class="logo-sub">SPACE BASE</span>
-        <h1 class="logo-title">星港余烬</h1>
-        <p class="logo-tagline">封锁中的轨道站，每一口氧气都是赌注</p>
+        <span class="logo-sub">SPACEBASE</span>
+        <h1 class="logo-title">太空基地</h1>
+        <p class="logo-tagline">小行星倒计时 50 年 · AI 统筹官自动推演文明走向</p>
       </div>
       <div class="start-panel">
         <p class="intro-text">
-          战争撕裂了星区航道。你的空间站被切断补给，幸存者蜷缩在破损的气密舱里。
-          白天修缮、分配资源；夜晚潜入死寂舱段搜刮物资。每一个决定，都关乎谁能活到救援抵达。
+          无需人类抉择。选择 AI 统筹官人格，观看其依据 Pop 群体态势、现行法律与资源压力，
+          自动处理道德两难事件、修订法案、扩建舱室，直至灭绝、存续、启航或分裂悲剧。
         </p>
-        <button id="btn-start" class="btn btn-primary">开始生存</button>
+        <p class="profile-label">选择 AI 决策人格</p>
+        <div class="profile-grid">
+          <button class="btn btn-profile" data-profile="survival">生存优先</button>
+          <button class="btn btn-profile" data-profile="expansion">扩张优先</button>
+          <button class="btn btn-profile" data-profile="humanitarian">人道主义</button>
+          <button class="btn btn-profile" data-profile="authoritarian">威权稳定</button>
+          <button class="btn btn-profile" data-profile="technocrat">科技至上</button>
+        </div>
+        <button id="btn-sim-all" class="btn btn-secondary">批量推演全部人格结局</button>
+        <div id="sim-results" class="sim-results" hidden></div>
       </div>
-      <footer class="start-footer">灵感来自《这是我的战争》· 纯文字策略生存</footer>
+      <footer class="start-footer">
+        Pop 涌现模拟 · 维多利亚3式法律 · 《这是我的战争》式事件
+        · <a href="docs/GDD.md">设计文档</a>
+      </footer>
     </div>
   </div>
 
-  <!-- 游戏结束界面 -->
+  <!-- 结局界面 -->
   <div id="end-screen" class="screen">
     <div class="end-content">
-      <h2 id="end-title">信号中断</h2>
+      <h2 id="end-title">文明档案</h2>
       <p id="end-message"></p>
       <div class="end-stats" id="end-stats"></div>
-      <button id="btn-restart" class="btn btn-primary">再次挑战</button>
+      <button id="btn-restart" class="btn btn-primary">返回选择人格</button>
     </div>
   </div>
 
-  <!-- 主游戏界面 -->
+  <!-- 主游戏界面（观战模式） -->
   <div id="game-screen" class="screen">
     <header class="game-header">
       <div class="header-left">
-        <span class="station-name">轨道站 Ω-7</span>
-        <span class="day-badge">第 <span id="day-count">1</span> 天</span>
-        <span class="phase-badge" id="phase-badge">白昼</span>
+        <span class="station-name">太空基地 Ω-1</span>
+        <span class="day-badge" id="date-display">地球纪元 Y0</span>
+        <span class="phase-badge earth" id="phase-badge">地球纪元</span>
+        <span class="ai-badge" id="ai-profile-badge">AI</span>
+        <span class="countdown-badge" id="countdown"></span>
       </div>
       <div class="header-resources">
-        <div class="resource" title="氧气">
-          <span class="res-icon">◎</span>
-          <span class="res-label">氧气</span>
-          <span class="res-value" id="res-oxygen">10</span>
-        </div>
-        <div class="resource" title="食物">
-          <span class="res-icon">◈</span>
-          <span class="res-label">食物</span>
-          <span class="res-value" id="res-food">8</span>
-        </div>
-        <div class="resource" title="净水">
-          <span class="res-icon">◇</span>
-          <span class="res-label">净水</span>
-          <span class="res-value" id="res-water">8</span>
-        </div>
-        <div class="resource" title="药品">
-          <span class="res-icon">✚</span>
-          <span class="res-label">药品</span>
-          <span class="res-value" id="res-medicine">3</span>
-        </div>
-        <div class="resource" title="废料">
-          <span class="res-icon">▣</span>
-          <span class="res-label">废料</span>
-          <span class="res-value" id="res-scrap">5</span>
-        </div>
+        <div class="resource" title="能源"><span class="res-icon">⚡</span><span class="res-label">能源</span><span class="res-value" id="res-energy">0</span></div>
+        <div class="resource" title="食物"><span class="res-icon">◈</span><span class="res-label">食物</span><span class="res-value" id="res-food">0</span></div>
+        <div class="resource" title="矿石"><span class="res-icon">▣</span><span class="res-label">矿石</span><span class="res-value" id="res-ore">0</span></div>
+        <div class="resource" title="挥发物"><span class="res-icon">◇</span><span class="res-label">挥发物</span><span class="res-value" id="res-volatiles">0</span></div>
+      </div>
+      <div class="header-stats">
+        <span class="mini-stat">人口 <b id="stat-pop">0</b></span>
+        <span class="mini-stat">多样性 <b id="stat-diversity">0</b></span>
+        <span class="mini-stat">稳定 <b id="stat-stability">0</b></span>
+        <span class="mini-stat">科研 <b id="stat-research">0</b></span>
+        <span class="mini-stat">士气 <b id="stat-morale">0</b></span>
+        <span class="mini-stat">政治资本 <b id="stat-political">0</b></span>
+      </div>
+      <div class="speed-controls">
+        <button id="btn-pause" class="btn btn-speed" title="暂停">⏸</button>
+        <button id="btn-speed-1" class="btn btn-speed">1×</button>
+        <button id="btn-speed-4" class="btn btn-speed">4×</button>
+        <button id="btn-speed-16" class="btn btn-speed">16×</button>
+        <button id="btn-fast" class="btn btn-speed btn-fast">极速→结局</button>
+        <span id="speed-label" class="speed-label">1×</span>
       </div>
     </header>
 
     <main class="game-main">
-      <!-- 幸存者面板 -->
-      <aside class="panel survivors-panel">
-        <h2 class="panel-title">幸存者</h2>
-        <div id="survivors-list" class="survivors-list"></div>
+      <aside class="panel pops-panel">
+        <h2 class="panel-title">Pop 群体</h2>
+        <div id="pops-list" class="pops-list"></div>
       </aside>
 
-      <!-- 中央叙事区 -->
       <section class="panel narrative-panel">
         <div class="narrative-header">
-          <h2 class="panel-title" id="scene-title">气密舱</h2>
-          <span class="mood-indicator" id="shelter-mood">气氛：紧张</span>
+          <h2 class="panel-title" id="scene-title">文明种子计划</h2>
         </div>
-        <div class="narrative-body" id="narrative-text">
-          <p>警报灯在舱壁上投下猩红的光斑。远处偶尔传来金属扭曲的呻吟。</p>
-        </div>
-        <div class="event-choices" id="event-choices"></div>
+        <div class="narrative-body" id="narrative-text"></div>
+        <div id="ai-decision" class="ai-decision" hidden></div>
       </section>
 
-      <!-- 行动面板 -->
-      <aside class="panel actions-panel">
-        <h2 class="panel-title">行动</h2>
-        <div id="actions-list" class="actions-list"></div>
-        <div class="night-note" id="night-note" hidden>
-          <p>夜色笼罩舱段。选择一名幸存者执行搜刮任务。</p>
+      <aside class="panel laws-panel">
+        <h2 class="panel-title">现行法律</h2>
+        <div id="laws-list" class="laws-list"></div>
+        <div class="archive-section">
+          <h3 class="sub-title">统计档案</h3>
+          <div id="archive-mini" class="archive-mini"></div>
         </div>
       </aside>
     </main>
 
-    <!-- 日志 -->
     <footer class="game-log">
-      <h3 class="log-title">舰桥日志</h3>
+      <h3 class="log-title">舰桥档案日志</h3>
       <div class="log-entries" id="log-entries"></div>
     </footer>
   </div>
 
-  <script src="js/game.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>
