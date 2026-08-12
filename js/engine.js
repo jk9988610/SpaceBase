@@ -203,6 +203,8 @@ function recordMilestone(state, category, title, detail = '', delta = null) {
 
 function setEnding(state, endingId, causeId, context = {}) {
   if (state.gameOver) return;
+  state.pendingEvent = null;
+  state.currentEvent = null;
   state.ending = endingId;
   state.endingCause = { id: causeId, ...context };
   state.gameOver = true;
@@ -283,11 +285,41 @@ function calcBirthRate(state) {
   return 0.0005 * foodOk * (0.7 + div * 0.5);
 }
 
+function getLawTier(group, optionKey) {
+  const order = LAW_PROGRESS_ORDER[group];
+  if (!order) return 0;
+  const idx = order.indexOf(optionKey);
+  return idx >= 0 ? idx : 0;
+}
+
+function getEmergencyModifiers(state) {
+  const m = { foodCostMult: 1, outputMult: 1, deathRateMult: 1, blockImmigration: false, morale: 0 };
+  state.modifiers.forEach(mod => {
+    if (mod.foodCostMult) m.foodCostMult *= mod.foodCostMult;
+    if (mod.outputMult) m.outputMult *= mod.outputMult;
+    if (mod.deathRateMult) m.deathRateMult *= mod.deathRateMult;
+    if (mod.blockImmigration) m.blockImmigration = true;
+    if (mod.morale) m.morale += mod.morale;
+  });
+  return m;
+}
+
+function applyEmergencyDecree(state, id, ticks, cfg) {
+  const existing = state.modifiers.find(m => m.id === id);
+  if (existing) {
+    existing.ticksLeft = ticks;
+    return;
+  }
+  state.modifiers.push({ id, ticksLeft: ticks, ...cfg });
+  addLog(state, `紧急法令：${cfg.label}（${Math.ceil(ticks / TICKS_PER_MONTH)} 月）`, 'important');
+}
+
 function calcDeathRate(state) {
   const total = state.pops.reduce((s, p) => s + p.count, 0);
   if (!total) return 0;
   const lawLabor = LAW_GROUPS.labor.options[state.laws.labor];
   const lawGen = LAW_GROUPS.genetics.options[state.laws.genetics];
+  const em = getEmergencyModifiers(state);
   let rate = 0.0004;
   if (state.resources.food < total * 0.05) rate *= 2;
   if (state.resources.food < total * 0.02) rate *= 2.5;
@@ -295,7 +327,7 @@ function calcDeathRate(state) {
   if (state.resources.energy < total * 0.02) rate *= 1.8;
   if (state.resources.energy <= 0) rate *= 2;
   if (state.resources.volatiles < total * 0.02) rate *= 2;
-  rate *= (lawLabor.deathRate || 1) * (lawGen.deathRate || 1) * state.inbreedRisk;
+  rate *= (lawLabor.deathRate || 1) * (lawGen.deathRate || 1) * state.inbreedRisk * em.deathRateMult;
   return rate;
 }
 
@@ -312,6 +344,10 @@ function getLawModifiers(state) {
     if (opt.lawCost) m.lawCost *= opt.lawCost;
     if (opt.volatility) m.volatility *= opt.volatility;
   });
+  const em = getEmergencyModifiers(state);
+  m.foodCost *= em.foodCostMult;
+  m.output *= em.outputMult;
+  m.morale += em.morale;
   if (state.outputPenaltyTicks > 0) m.output *= state.outputPenalty;
   return m;
 }
@@ -436,6 +472,7 @@ function tickPops(state) {
 
   if (state.phase === 1 && !state.immigrationClosed && state.tick % (TICKS_PER_MONTH * 6) === 0
       && getYear(state) >= 3 && getYear(state) < 46) {
+    if (getEmergencyModifiers(state).blockImmigration) return;
     const dailyFoodNeed = newTotal * 0.0075 * getLawModifiers(state).foodCost;
     const foodDays = dailyFoodNeed > 0 ? state.resources.food / dailyFoodNeed : 0;
     if (foodDays < 150) return;
@@ -528,9 +565,10 @@ function archiveSnapshot(state) {
   }
 }
 
-function enactLaw(state, group, optionKey, reason) {
+function enactLaw(state, group, optionKey, reason, opts = {}) {
   const old = state.laws[group];
   if (old === optionKey) return false;
+  if (!opts.force && getLawTier(group, optionKey) <= getLawTier(group, old)) return false;
   const lm = getLawModifiers(state);
   const cost = Math.floor(15 * (LAW_GROUPS[group].options[optionKey]?.lawCost || lm.lawCost || 1));
   if (state.political < cost) return false;
@@ -611,7 +649,7 @@ function applyChoiceEffects(state, choice) {
     state.compartments.reactor = Math.max(0, state.compartments.reactor - 1);
     state.pops.forEach(p => { if (p.profession === 'nuclear_ops') p.count = Math.floor(p.count * 0.6); });
   }
-  if (e.law) Object.entries(e.law).forEach(([g, o]) => enactLaw(state, g, o, '事件驱动'));
+  if (e.law) Object.entries(e.law).forEach(([g, o]) => enactLaw(state, g, o, '事件驱动', { force: true }));
   if (e.political) state.political = clamp(state.political + e.political, 0, 100);
   if (e.deathRate) state.modifiers.push({ ticksLeft: 30, deathRate: e.deathRate });
 }
@@ -625,11 +663,21 @@ const ENDING_FROM_EVENT = {
 function resolveEventWithChoice(state, event, choice, meta = {}) {
   applyChoiceEffects(state, choice);
   if (choice.effects?.ending) {
-    const metaEnd = ENDING_FROM_EVENT[choice.effects.ending] || { cause: 'event_choice' };
-    setEnding(state, choice.effects.ending, metaEnd.cause, {
-      event: event.title,
-      choice: choice.label,
-    });
+    const stats = aggregateStats(state);
+    const endingId = choice.effects.ending;
+    if (endingId === 'stellar' && stats.total < MIN_LAUNCH_POPULATION) {
+      addLog(state, `人口不足 ${MIN_LAUNCH_POPULATION}，无法执行聚变启航。`, 'danger');
+      setEnding(state, 'extinction', inferExtinctionCause(state, stats));
+    } else if (stats.total <= 0) {
+      setEnding(state, 'extinction', inferExtinctionCause(state, stats));
+    } else {
+      const metaEnd = ENDING_FROM_EVENT[endingId] || { cause: 'event_choice' };
+      setEnding(state, endingId, metaEnd.cause, {
+        event: event.title,
+        choice: choice.label,
+        population: stats.total,
+      });
+    }
   }
   const reason = meta.reason || (meta.actor === 'player' ? '玩家手动抉择' : '自动决策');
   if (!meta.routine) {
@@ -684,25 +732,34 @@ function aiConsiderLaws(state) {
     if (w.moraleBelow && stats.morale >= w.moraleBelow) ok = false;
     if (w.diversityBelow && stats.diversity >= w.diversityBelow) ok = false;
     if (w.researchBelow && state.research >= w.researchBelow) ok = false;
+    if (w.energyBelow && state.resources.energy >= w.energyBelow) ok = false;
     if (w.phase && w.phase !== state.phase) ok = false;
     if (!ok) continue;
-    if (enactLaw(state, cand.group, cand.to, `AI 响应局势：${AI_PROFILES[state.aiProfile].name}`)) break;
+    if (getLawTier(cand.group, cand.to) <= getLawTier(cand.group, state.laws[cand.group])) continue;
+    if (enactLaw(state, cand.group, cand.to, `立法议程：${AI_PROFILES[state.aiProfile].name}`)) break;
   }
 }
 
 function aiEmergencyProtocols(state) {
   if (state.tick % TICKS_PER_MONTH !== 0) return;
   const stats = aggregateStats(state);
+  if (stats.total <= 0) return;
   const foodDays = state.resources.food / Math.max(stats.total * 0.0075, 0.1);
 
-  if (foodDays < 50 && state.laws.welfare !== 'austerity') {
-    enactLaw(state, 'welfare', 'austerity', '紧急存续协议：自动削减配给');
+  if (foodDays < 50) {
+    applyEmergencyDecree(state, 'emergency_austerity', TICKS_PER_MONTH * 3, {
+      foodCostMult: 0.82, morale: -6, label: '危机配给令',
+    });
   }
-  if (foodDays < 25 && state.laws.immigration !== 'closed' && state.laws.immigration !== 'selective') {
-    enactLaw(state, 'immigration', 'closed', '紧急存续协议：关闭边境');
+  if (foodDays < 25) {
+    applyEmergencyDecree(state, 'emergency_border', TICKS_PER_MONTH * 2, {
+      blockImmigration: true, label: '边境戒严令',
+    });
   }
-  if (state.resources.energy < stats.total * 0.03 && state.laws.labor !== 'shift' && state.aiProfile !== 'humanitarian') {
-    enactLaw(state, 'labor', 'shift', '紧急存续协议：轮班加班维持能源');
+  if (state.resources.energy < stats.total * 0.03 && state.aiProfile !== 'humanitarian') {
+    applyEmergencyDecree(state, 'emergency_overtime', TICKS_PER_MONTH * 2, {
+      outputMult: 1.12, deathRateMult: 1.08, label: '能源应急轮班令',
+    });
   }
 }
 
@@ -806,6 +863,8 @@ function checkEnding(state) {
   if (state.gameOver) return state.ending;
 
   if (stats.total <= 0) {
+    state.pendingEvent = null;
+    state.currentEvent = null;
     setEnding(state, 'extinction', inferExtinctionCause(state, stats));
     return 'extinction';
   }
@@ -837,6 +896,7 @@ function checkEnding(state) {
 
   if (state.phase === 2 && state.research >= 1 && state.shipProgress >= 1
       && state.tick >= IMPACT_TICK + TICKS_PER_MONTH * 3
+      && stats.total >= MIN_LAUNCH_POPULATION
       && !state.triggeredEvents.has('launch_decision')) {
     const ev = EVENTS.find(e => e.id === 'launch_decision');
     if (ev) {
@@ -907,6 +967,10 @@ function simulateTick(state) {
   checkPhaseTransition(state);
   tickCompartments(state);
   tickPops(state);
+  if (aggregateStats(state).total <= 0) {
+    checkEnding(state);
+    return state;
+  }
   applyDelayedModifiers(state);
   state.political = clamp(state.political + 0.02, 0, 100);
   archiveSnapshot(state);
@@ -916,6 +980,7 @@ function simulateTick(state) {
     const event = pick(events);
     if (state.gameMode === 'player' && isPlayerNodeEvent(event)) {
       queuePlayerEvent(state, event);
+      checkEnding(state);
       return state;
     }
     if (state.gameMode === 'player') resolveEventAuto(state, event);
