@@ -80,23 +80,26 @@ function formatDate(state) {
   return `${phase} · 第 ${d} 日`;
 }
 
+function calcDiversity(state) {
+  const groups = new Set(state.pops.map(p => p.geneGroup));
+  const base = groups.size / GENE_GROUPS.length;
+  const lawImm = LAW_GROUPS.immigration.options[state.laws.immigration];
+  return clamp(base + (lawImm.diversity || 0), 0, 1);
+}
+
 function aggregateStats(state) {
   const total = state.pops.reduce((s, p) => s + p.count, 0);
-  if (!total) return { total: 0, morale: 0, loyalty: 0, radical: 0, diversity: 0, stability: 0 };
+  if (!total) return { total: 0, morale: 0, loyalty: 0, radical: 0, diversity: 0, stability: 0, birthRate: 0, deathRate: 0 };
 
   const w = (fn) => state.pops.reduce((s, p) => s + fn(p) * p.count, 0) / total;
-  const groups = new Set(state.pops.map(p => p.geneGroup));
-  const diversity = groups.size / GENE_GROUPS.length;
-
-  const lawImm = LAW_GROUPS.immigration.options[state.laws.immigration];
-  const diversityAdj = diversity + (lawImm.diversity || 0);
+  const diversity = calcDiversity(state);
 
   return {
     total,
     morale: w(p => p.morale),
     loyalty: w(p => p.loyalty),
     radical: w(p => p.radicalism),
-    diversity: clamp(diversityAdj, 0, 1),
+    diversity,
     stability: w(p => p.loyalty * 0.4 + p.morale * 0.4 + (100 - p.radicalism) * 0.2),
     birthRate: calcBirthRate(state),
     deathRate: calcDeathRate(state),
@@ -104,11 +107,10 @@ function aggregateStats(state) {
 }
 
 function calcBirthRate(state) {
-  const stats = { total: 0 };
   const total = state.pops.reduce((s, p) => s + p.count, 0);
   if (!total) return 0;
   const foodOk = state.resources.food > total * 0.05 ? 1 : 0.3;
-  const div = aggregateStats(state).diversity;
+  const div = calcDiversity(state);
   return 0.0008 * foodOk * (0.7 + div * 0.5);
 }
 
@@ -467,6 +469,26 @@ function fastForwardToEnd(state, maxTicks = 50000) {
     i++;
   }
   return state;
+}
+
+/** 分块极速推演，避免阻塞 UI 线程 */
+function fastForwardChunked(state, maxTicks = 50000, chunkSize = 800) {
+  return new Promise((resolve) => {
+    let i = 0;
+    function runChunk() {
+      const limit = Math.min(i + chunkSize, maxTicks);
+      while (i < limit && !state.gameOver) {
+        simulateTick(state);
+        i++;
+      }
+      if (!state.gameOver && i < maxTicks) {
+        setTimeout(runChunk, 0);
+      } else {
+        resolve(state);
+      }
+    }
+    runChunk();
+  });
 }
 
 function generateReport(state) {

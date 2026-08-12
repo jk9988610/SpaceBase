@@ -7,10 +7,13 @@ let speed = 1;
 let ticksPerFrame = 1;
 
 function startSimulation(profile) {
+  if (loopId) cancelAnimationFrame(loopId);
   gameState = createInitialState(profile);
   addLog(gameState, '文明种子计划启动。AI 统筹官接管全部决策权。', 'important');
   addLog(gameState, `决策人格：${AI_PROFILES[profile].name}`, 'important');
   showScreen('game-screen');
+  // 立即推进数日，让界面有可见变化
+  for (let i = 0; i < 5; i++) simulateTick(gameState);
   renderGame(gameState);
   speed = 1;
   ticksPerFrame = 1;
@@ -57,13 +60,20 @@ function setSpeed(s) {
   updateSpeedLabel(s);
 }
 
-function fastSimulate() {
+async function fastSimulate() {
   if (!gameState || gameState.gameOver) return;
+  if (loopId) cancelAnimationFrame(loopId);
   const before = gameState.tick;
-  fastForwardToEnd(gameState, 30000);
+  setSpeed(0);
+  document.getElementById('speed-label').textContent = '极速中…';
+  await fastForwardChunked(gameState, 30000);
   renderGame(gameState);
   if (gameState.gameOver) showEndScreen(gameState);
-  else addLog(gameState, `极速推演 ${gameState.tick - before} 日`, 'important');
+  else {
+    addLog(gameState, `极速推演 ${gameState.tick - before} 日`, 'important');
+    renderGame(gameState);
+    runLoop();
+  }
 }
 
 function initUI() {
@@ -91,18 +101,22 @@ function initUI() {
 /** 批量推演全部 AI 人格至结局，结果展示在开始页 */
 async function runAllEndings(profiles) {
   const container = document.getElementById('sim-results');
+  const btn = document.getElementById('btn-sim-all');
   container.hidden = false;
-  container.innerHTML = '<p class="sim-loading">正在推演全部结局路径…</p>';
+  btn.disabled = true;
+  container.innerHTML = '<p class="sim-loading">正在推演全部结局路径…（0/' + profiles.length + '）</p>';
 
   const results = [];
-  for (const p of profiles) {
+  for (let idx = 0; idx < profiles.length; idx++) {
+    const p = profiles[idx];
+    container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[p].name}（${idx + 1}/${profiles.length}）…</p>`;
     const s = createInitialState(p);
-    fastForwardToEnd(s, 40000);
-    const r = generateReport(s);
-    results.push(r);
-    await new Promise(r => setTimeout(r, 10));
+    await fastForwardChunked(s, 40000);
+    results.push(generateReport(s));
+    await new Promise(r => setTimeout(r, 0));
   }
 
+  btn.disabled = false;
   container.innerHTML = `
     <h3>全人格推演结果</h3>
     <div class="sim-grid">
