@@ -4,13 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="太空基地 Spacebase - AI 自动推演文明种子生存模拟">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>太空基地 · Spacebase</title>
   <base href="/SpaceBase/">
   <link rel="canonical" href="https://jk9988610.github.io/SpaceBase/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛸</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=20260812-survival-v2">
 </head>
 <body>
   <div class="scanlines" aria-hidden="true"></div>
@@ -37,12 +39,15 @@
           <button class="btn btn-profile" data-profile="authoritarian">威权稳定</button>
           <button class="btn btn-profile" data-profile="technocrat">科技至上</button>
         </div>
+        <p class="profile-hint">点击人格将极速推演至结局（与批量推演同路径，结果可复现）</p>
+        <button id="btn-watch" class="btn btn-secondary btn-watch">观战模式（慢速可视化）</button>
         <button id="btn-sim-all" class="btn btn-secondary">批量推演全部人格结局</button>
         <div id="sim-results" class="sim-results" hidden></div>
       </div>
       <footer class="start-footer">
         Pop 涌现模拟 · 维多利亚3式法律 · 《这是我的战争》式事件
         · <a href="docs/GDD.md">设计文档</a>
+        · <span id="build-version"></span>
       </footer>
     </div>
   </div>
@@ -127,9 +132,9 @@
     </footer>
   </div>
 
-  <script src="js/data.js"></script>
-  <script src="js/engine.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/data.js?v=20260812-survival-v2"></script>
+  <script src="js/engine.js?v=20260812-survival-v2"></script>
+  <script src="js/ui.js?v=20260812-survival-v2"></script>
+  <script src="js/main.js?v=20260812-survival-v2"></script>
 </body>
 </html>
