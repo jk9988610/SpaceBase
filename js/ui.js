@@ -144,10 +144,10 @@ function renderNarrative(state) {
   } else if (state.lastAIDecision) {
     title.textContent = '基地运转';
     const who = state.gameMode === 'player' ? '你' : 'AI 统筹官';
-    body.innerHTML = `<p>基地在 ${formatDate(state)} 继续运转。${who}监控着每一个舱室与群体。</p>`;
+    body.innerHTML = `<p>${formatDate(state)} · ${who}监控舱室与群体运转。</p>`;
   } else {
     title.textContent = '文明种子计划';
-    body.innerHTML = `<p>地球联盟启动太空基地计划。AI 统筹官接管决策权，带领人类文明种子走向未知结局。</p>`;
+    body.innerHTML = `<p>地球联盟启动太空基地计划，文明种子在轨道中等待命运裁决。</p>`;
   }
 
   if (state.lastAIDecision && !state.currentEvent?.awaitingChoice) {
