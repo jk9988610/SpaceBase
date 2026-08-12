@@ -3,7 +3,7 @@
  */
 
 /** 构建版本号：更新资源缓存 */
-const BUILD_VERSION = '20260812-law-pop-v3';
+const BUILD_VERSION = '20260812-viz-v1';
 
 /** 聚变启航最低人口（低于此无法达成双星文明结局） */
 const MIN_LAUNCH_POPULATION = 500;

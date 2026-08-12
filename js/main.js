@@ -267,6 +267,8 @@ function initUI() {
   document.getElementById('btn-sim-all')?.addEventListener('click', () => {
     runAllEndings(Object.keys(AI_PROFILES));
   });
+
+  initBaseViz(() => gameState);
 }
 
 async function runAllEndings(profiles) {
