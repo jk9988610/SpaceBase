@@ -20,11 +20,15 @@ python3 -m http.server 8080
 
 ## GitHub Pages 部署（Actions 模式）
 
-本仓库已配置 GitHub Actions 自动部署。在仓库设置中：
+本仓库已配置 GitHub Actions 自动部署。**首次使用需手动开启 Pages：**
 
-1. 进入 **Settings → Pages**
-2. **Build and deployment** → Source 选择 **GitHub Actions**
-3. 推送至 `main` 分支后，工作流 `.github/workflows/deploy-pages.yml` 会自动构建并发布
+1. 打开仓库 [Settings → Pages](https://github.com/jk9988610/SpaceBase/settings/pages)
+2. **Build and deployment** → **Source** 选择 **GitHub Actions**
+3. 保存后，进入 [Actions](https://github.com/jk9988610/SpaceBase/actions) 页面，重新运行 **Deploy GitHub Pages** 工作流
+
+之后每次推送到 `main` 分支都会自动部署。站点地址：
+
+**https://jk9988610.github.io/SpaceBase/**
 
 ## 玩法简介
 
