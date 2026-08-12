@@ -47,6 +47,10 @@ function createPop(profession, count, opts = {}) {
   };
 }
 
+function getProfileEconomy(state) {
+  return AI_PROFILES[state.aiProfile]?.economy || {};
+}
+
 function createInitialState(aiProfile = 'survival') {
   const simSeed = hashString(aiProfile);
   initRng(simSeed);
@@ -56,17 +60,17 @@ function createInitialState(aiProfile = 'survival') {
   Object.entries(LAW_GROUPS).forEach(([k, g]) => { laws[k] = g.default; });
 
   const pops = [
-    createPop('eco_engineer', 180, { geneGroup: 'A', skillTier: 4 }),
-    createPop('nuclear_ops', 120, { geneGroup: 'B', skillTier: 4 }),
-    createPop('miner', 200, { geneGroup: 'C', ideology: 'frontier' }),
-    createPop('scholar', 80, { geneGroup: 'D', ideology: 'technocrat', skillTier: 5 }),
-    createPop('medic', 60, { geneGroup: 'A', skillTier: 4 }),
+    createPop('eco_engineer', 300, { geneGroup: 'A', skillTier: 4 }),
+    createPop('nuclear_ops', 200, { geneGroup: 'B', skillTier: 4 }),
+    createPop('miner', 180, { geneGroup: 'C', ideology: 'frontier' }),
+    createPop('scholar', 90, { geneGroup: 'D', ideology: 'technocrat', skillTier: 5 }),
+    createPop('medic', 70, { geneGroup: 'A', skillTier: 4 }),
     createPop('admin', 40, { geneGroup: 'E' }),
-    createPop('colonist', 520, { geneGroup: pick(GENE_GROUPS), morale: 55 }),
+    createPop('colonist', 380, { geneGroup: pick(GENE_GROUPS), morale: 55 }),
   ];
 
   const compartments = {
-    habitat: 2, agriculture: 1, reactor: 1, shipyard: 1,
+    habitat: 2, agriculture: 3, reactor: 3, shipyard: 1,
     lab: 1, medical: 1, archive: 1, immigration: 1,
   };
 
@@ -78,13 +82,13 @@ function createInitialState(aiProfile = 'survival') {
     laws,
     pops,
     compartments,
-    resources: { energy: 80, food: 120, ore: 60, volatiles: 100 },
+    resources: { energy: 140, food: 180, ore: 80, volatiles: 120 },
     research: 0,
     political: 50,
     flags: {},
     triggeredEvents: new Set(),
     modifiers: [],
-    leakRate: 0.15,
+    leakRate: 0.08,
     outputPenalty: 1,
     outputPenaltyTicks: 0,
     meltdownRisk: 0,
@@ -103,6 +107,10 @@ function createInitialState(aiProfile = 'survival') {
     resourceCrisisTicks: 0,
     populationDeclineMonths: 0,
     lastMonthPopulation: 0,
+    netFood: 0,
+    netEnergy: 0,
+    agriBoost: 1,
+    stableMonths: 0,
   };
 
   state.archive.initial = captureStateSnapshot(state);
@@ -190,9 +198,9 @@ function isEcologicallyViable(state) {
   const total = stats.total;
   if (!total) return false;
   return (
-    state.resources.food > total * 0.04 &&
-    state.resources.energy > total * 0.03 &&
-    state.resources.volatiles > total * 0.015
+    state.resources.food > total * 0.03 &&
+    state.resources.energy > total * 0.02 &&
+    state.resources.volatiles > total * 0.01
   );
 }
 
@@ -230,7 +238,7 @@ function calcBirthRate(state) {
   if (!total) return 0;
   const foodOk = state.resources.food > total * 0.05 ? 1 : 0.3;
   const div = calcDiversity(state);
-  return 0.0007 * foodOk * (0.7 + div * 0.5);
+  return 0.0005 * foodOk * (0.7 + div * 0.5);
 }
 
 function calcDeathRate(state) {
@@ -268,44 +276,73 @@ function getLawModifiers(state) {
 
 function tickCompartments(state) {
   const lm = getLawModifiers(state);
+  const pe = getProfileEconomy(state);
   const total = state.pops.reduce((s, p) => s + p.count, 0);
   const profCounts = {};
   state.pops.forEach(p => { profCounts[p.profession] = (profCounts[p.profession] || 0) + p.laborForce; });
 
   let energy = 0, food = 0, ore = 0;
   const counts = state.compartments;
+  const foodMult = (pe.food || 1) * state.agriBoost * (pe.output || 1);
+  const energyMult = (pe.energy || 1) * (pe.output || 1);
+
+  // 人居舱基础生命维持能源
+  energy += counts.habitat * 3;
 
   const agriSlots = counts.agriculture * COMPARTMENTS.agriculture.slots;
   const agriStaff = Math.min(profCounts.eco_engineer || 0, agriSlots * 50);
-  food += (agriStaff / 50) * COMPARTMENTS.agriculture.output.food * lm.output * 1.35;
+  const energyFactor = state.resources.energy > 10 ? 1 : state.resources.energy > 0 ? 0.4 : 0.1;
+  food += (agriStaff / 50) * COMPARTMENTS.agriculture.output.food * lm.output * foodMult * energyFactor;
 
   const reactSlots = counts.reactor * COMPARTMENTS.reactor.slots;
   const reactStaff = Math.min(profCounts.nuclear_ops || 0, reactSlots * 40);
-  energy += (reactStaff / 40) * COMPARTMENTS.reactor.output.energy * lm.output * 1.1;
+  energy += (reactStaff / 40) * COMPARTMENTS.reactor.output.energy * lm.output * energyMult;
 
   const mineSlots = counts.shipyard * COMPARTMENTS.shipyard.slots;
   const mineStaff = Math.min(profCounts.miner || 0, mineSlots * 50);
   ore += (mineStaff / 50) * COMPARTMENTS.shipyard.output.ore * lm.output;
-  energy -= (mineStaff / 50) * 2;
+  energy -= (mineStaff / 50) * 1.5;
 
   const labSlots = counts.lab * COMPARTMENTS.lab.slots;
   const labStaff = Math.min(profCounts.scholar || 0, labSlots * 30);
   const gov = LAW_GROUPS.governance.options[state.laws.governance];
-  state.research = clamp(state.research + (labStaff / 30) * 0.0003 * lm.research * (gov.research || 1), 0, 1);
+  const researchMult = (pe.research || 1) * (gov.research || 1);
+  const prevResearch = state.research;
+  state.research = clamp(state.research + (labStaff / 30) * 0.00035 * lm.research * researchMult, 0, 1);
+  if (state.research >= 0.25 && prevResearch < 0.25 && !state.flags.agriV2) {
+    state.flags.agriV2 = true;
+    state.agriBoost = 1.2;
+    recordMilestone(state, 'tech', '闭环农业 V2', '科研突破：农业产出 +20%');
+  }
   energy -= labStaff / 30;
 
-  energy -= total * 0.007;
-  food -= total * 0.010 * lm.foodCost;
-  state.resources.volatiles -= state.leakRate * lm.volatility;
-  state.resources.volatiles -= total * 0.003;
+  const foodUse = total * 0.0075 * lm.foodCost;
+  const energyUse = total * 0.0045;
+  energy -= energyUse;
+  food -= foodUse;
+  state.resources.volatiles -= state.leakRate * lm.volatility * (pe.volatiles ? 2 - pe.volatiles : 1);
+  state.resources.volatiles -= total * 0.0012;
 
-  state.resources.energy = clamp(state.resources.energy + energy, 0, 500);
-  state.resources.food = clamp(state.resources.food + food, 0, 500);
-  state.resources.ore = clamp(state.resources.ore + ore, 0, 500);
-  state.resources.volatiles = clamp(state.resources.volatiles, 0, 500);
+  // 太空纪元：船坞稳态挥发物回收
+  if (state.phase === 2 && counts.shipyard > 0) {
+    state.resources.volatiles += counts.shipyard * 0.35 * lm.output;
+  }
+
+  state.netFood = food;
+  state.netEnergy = energy;
+
+  if (state.tick % TICKS_PER_MONTH === 0) {
+    if (food >= 0 && energy >= 0) state.stableMonths++;
+    else state.stableMonths = Math.max(0, state.stableMonths - 2);
+  }
+
+  state.resources.energy = clamp(state.resources.energy + energy, 0, 600);
+  state.resources.food = clamp(state.resources.food + food, 0, 600);
+  state.resources.ore = clamp(state.resources.ore + ore, 0, 600);
+  state.resources.volatiles = clamp(state.resources.volatiles, 0, 600);
 
   if (state.phase === 2 && state.research > 0.5) {
-    state.shipProgress = clamp(state.shipProgress + ore * 0.0001, 0, 1);
+    state.shipProgress = clamp(state.shipProgress + ore * 0.00012, 0, 1);
   }
 }
 
@@ -317,7 +354,10 @@ function tickPops(state) {
 
   state.pops.forEach(p => {
     const births = Math.floor(p.count * birth * (p.profession === 'colonist' ? 1.2 : 0.8));
-    const deaths = Math.floor(p.count * death * (p.morale < 30 ? 1.3 : 1));
+    let deaths = Math.floor(p.count * death * (p.morale < 30 ? 1.3 : 1)
+      * (CRITICAL_PROFESSIONS[p.profession] ? 0.55 : 1));
+    const profFloor = CRITICAL_PROFESSIONS[p.profession]?.floor;
+    if (profFloor) deaths = Math.min(deaths, Math.max(0, p.count - profFloor));
     p.count = Math.max(0, p.count + births - deaths);
     p.laborForce = Math.floor(p.count * 0.75);
     p.dependents = p.count - p.laborForce;
@@ -335,6 +375,7 @@ function tickPops(state) {
   });
 
   state.pops = state.pops.filter(p => p.count > 0);
+  maintainCriticalProfessions(state);
 
   const newTotal = state.pops.reduce((s, p) => s + p.count, 0);
   if (newTotal > state.peakPopulation) {
@@ -351,13 +392,21 @@ function tickPops(state) {
     state.lastMonthPopulation = newTotal;
   }
 
-  if (state.phase === 1 && !state.immigrationClosed && state.tick % (TICKS_PER_MONTH * 6) === 0 && getYear(state) < 48) {
-    const dailyFoodNeed = newTotal * 0.012 * getLawModifiers(state).foodCost;
+  if (state.phase === 1 && !state.immigrationClosed && state.tick % (TICKS_PER_MONTH * 6) === 0
+      && getYear(state) >= 3 && getYear(state) < 46) {
+    const dailyFoodNeed = newTotal * 0.0075 * getLawModifiers(state).foodCost;
     const foodDays = dailyFoodNeed > 0 ? state.resources.food / dailyFoodNeed : 0;
-    if (foodDays < 90) return;
+    if (foodDays < 150) return;
+    if (state.resources.energy < newTotal * 0.035) return;
+    if (state.netFood < 0 || state.netEnergy < 0) return;
 
-    const imm = LAW_GROUPS.immigration.options[state.laws.immigration];
-    const batch = state.laws.immigration === 'open' ? rand(20, 50) : state.laws.immigration === 'selective' ? rand(8, 20) : rand(3, 12);
+    const batch = state.laws.immigration === 'open' ? rand(10, 25)
+      : state.laws.immigration === 'selective' ? rand(5, 12) : rand(2, 6);
+    const skilled = state.laws.immigration === 'selective' ? rand(2, 6) : rand(0, 3);
+    if (skilled > 0) {
+      state.pops.push(createPop('eco_engineer', Math.ceil(skilled / 2), { skillTier: 3 }));
+      state.pops.push(createPop('nuclear_ops', Math.floor(skilled / 2), { skillTier: 3 }));
+    }
     state.pops.push(createPop('colonist', batch, { geneGroup: pick(GENE_GROUPS), morale: 45 }));
     addLog(state, `地球移民批次抵达：+${batch} 人`, 'important');
   }
@@ -381,8 +430,10 @@ function applyDelayedModifiers(state) {
 function checkPhaseTransition(state) {
   if (state.phase === 1 && state.tick >= IMPACT_TICK) {
     state.phase = 2;
-    state.resources.food += 30;
-    addLog(state, '小行星撞击地球。地球纪元结束，太空纪元开始。补给永久归零。', 'danger');
+    state.resources.food += 100;
+    state.resources.volatiles += 50;
+    state.resources.ore += 30;
+    addLog(state, '小行星撞击地球。地球纪元结束，太空纪元开始。轨道应急储备已启用。', 'danger');
     archiveDecision(state, 'phase', '地球毁灭，进入太空纪元');
     const stats = aggregateStats(state);
     recordMilestone(state, 'phase', '小行星撞击地球 · 太空纪元开始',
@@ -560,6 +611,7 @@ function getEligibleEvents(state) {
     const t = ev.trigger || {};
     if (t.volatilesBelow && state.resources.volatiles >= t.volatilesBelow) return false;
     if (t.foodBelow && state.resources.food >= t.foodBelow) return false;
+    if (t.energyBelow && state.resources.energy >= t.energyBelow) return false;
     if (t.moraleBelow && stats.morale >= t.moraleBelow) return false;
     if (t.researchAbove && state.research < t.researchAbove) return false;
     if (t.diversityBelow && stats.diversity >= t.diversityBelow) return false;
@@ -585,19 +637,95 @@ function aiConsiderLaws(state) {
   }
 }
 
+function aiEmergencyProtocols(state) {
+  if (state.tick % TICKS_PER_MONTH !== 0) return;
+  const stats = aggregateStats(state);
+  const foodDays = state.resources.food / Math.max(stats.total * 0.0075, 0.1);
+
+  if (foodDays < 50 && state.laws.welfare !== 'austerity') {
+    enactLaw(state, 'welfare', 'austerity', '紧急存续协议：自动削减配给');
+  }
+  if (foodDays < 25 && state.laws.immigration !== 'closed' && state.laws.immigration !== 'selective') {
+    enactLaw(state, 'immigration', 'closed', '紧急存续协议：关闭边境');
+  }
+  if (state.resources.energy < stats.total * 0.03 && state.laws.labor !== 'shift' && state.aiProfile !== 'humanitarian') {
+    enactLaw(state, 'labor', 'shift', '紧急存续协议：轮班加班维持能源');
+  }
+}
+
+const CRITICAL_PROFESSIONS = {
+  eco_engineer: { floor: 120, trainRate: 8 },
+  nuclear_ops: { floor: 80, trainRate: 6 },
+  scholar: { floor: 40, trainRate: 3 },
+  medic: { floor: 30, trainRate: 2 },
+};
+
+function maintainCriticalProfessions(state) {
+  if (state.tick % TICKS_PER_MONTH !== 0) return;
+  const colonists = state.pops.filter(p => p.profession === 'colonist');
+  let colonistPool = colonists.reduce((s, p) => s + p.count, 0);
+
+  Object.entries(CRITICAL_PROFESSIONS).forEach(([prof, cfg]) => {
+    const current = state.pops.filter(p => p.profession === prof).reduce((s, p) => s + p.count, 0);
+    if (current >= cfg.floor || colonistPool < cfg.trainRate) return;
+    const need = Math.min(cfg.trainRate, cfg.floor - current, colonistPool);
+    if (need <= 0) return;
+
+    let rem = need;
+    for (const p of colonists) {
+      const take = Math.min(p.count, rem);
+      p.count -= take;
+      rem -= take;
+      colonistPool -= take;
+      if (!rem) break;
+    }
+    const existing = state.pops.find(p => p.profession === prof);
+    if (existing) existing.count += need;
+    else state.pops.push(createPop(prof, need, { skillTier: 3 }));
+  });
+
+  state.pops = state.pops.filter(p => p.count > 0);
+}
+
+function getStaffCapacity(state) {
+  const profCounts = {};
+  state.pops.forEach(p => { profCounts[p.profession] = (profCounts[p.profession] || 0) + p.laborForce; });
+  const agriCap = Math.max(3, Math.ceil((profCounts.eco_engineer || 0) / 45) + 1);
+  const reactCap = Math.max(2, Math.ceil((profCounts.nuclear_ops || 0) / 35) + 1);
+  return { profCounts, agriCap, reactCap };
+}
+
 function aiConsiderBuild(state) {
   if (state.tick % TICKS_PER_MONTH !== 0) return;
   const stats = aggregateStats(state);
-  if (state.resources.ore < 15) return;
+  const pe = getProfileEconomy(state);
+  const { agriCap, reactCap } = getStaffCapacity(state);
+  const oreMin = 12 * (pe.buildOre || 1);
+  if (state.resources.ore < oreMin) return;
+
+  const epc = state.resources.energy / Math.max(stats.total, 1);
+  const fpc = state.resources.food / Math.max(stats.total, 1);
+  const counts = state.compartments;
 
   let target = null;
-  if (state.resources.food < stats.total * 0.12) target = 'agriculture';
-  else if (state.resources.energy < stats.total * 0.08) target = 'reactor';
-  else if (state.resources.ore < 40 && state.phase === 2) target = 'shipyard';
-  else if (state.research < 0.6 && state.compartments.lab < 3) target = 'lab';
-  else if (stats.total > state.compartments.habitat * 400) target = 'habitat';
+  const needReactors = Math.max(1, Math.ceil((counts.agriculture || 0) / 3));
+  const urgentPreImpact = state.phase === 1 && getYear(state) >= 40;
+  if (counts.reactor < needReactors || counts.reactor < reactCap * 0.6) target = 'reactor';
+  else if (epc < 0.06 || state.resources.energy < 25 || state.netEnergy < -1) target = 'reactor';
+  else if ((fpc < 0.1 || state.netFood < 0) && counts.agriculture < agriCap) target = 'agriculture';
+  else if (state.netFood < -5 && counts.agriculture < agriCap + 4) target = 'agriculture';
+  else if (urgentPreImpact && state.netFood < 5 && counts.agriculture < agriCap + 2) target = 'agriculture';
+  else if (urgentPreImpact && state.netEnergy < 5 && counts.reactor < reactCap + 2) target = 'reactor';
+  else if (state.phase === 2 && state.resources.ore < 40 && counts.shipyard < 2) target = 'shipyard';
+  else if (state.research < 0.55 && counts.lab < 2 && epc > 0.08) target = 'lab';
+  else if (stats.total > counts.habitat * 420) target = 'habitat';
+  else if (state.research < 0.5 && counts.lab < 3) target = 'lab';
 
   if (!target) return;
+  if (target === 'agriculture' && counts.agriculture >= agriCap && state.netFood >= -2) return;
+  if (target === 'reactor' && counts.reactor >= reactCap + 2) return;
+  // 食物赤字时允许突破农业舱上限
+  if (target === 'agriculture' && counts.agriculture >= agriCap + 3) return;
   const cost = COMPARTMENTS[target].buildCost;
   if (!cost) return;
   const can = Object.entries(cost).every(([k, v]) => state.resources[k] >= v);
@@ -631,16 +759,17 @@ function checkEnding(state) {
 
   const foodZero = state.resources.food <= 0;
   const energyZero = state.resources.energy <= 0;
-  if (foodZero && energyZero) {
+  const productionCollapsed = state.netFood < -1 && state.netEnergy < -1;
+  if (foodZero && energyZero && productionCollapsed) {
     state.resourceCrisisTicks++;
-    if (state.resourceCrisisTicks >= TICKS_PER_MONTH * 2) {
+    if (state.resourceCrisisTicks >= TICKS_PER_MONTH * 4) {
       setEnding(state, 'extinction', 'ecosystem_collapse', {
         food: state.resources.food, energy: state.resources.energy,
       });
       return 'extinction';
     }
   } else {
-    state.resourceCrisisTicks = 0;
+    state.resourceCrisisTicks = Math.max(0, state.resourceCrisisTicks - 1);
   }
 
   if (state.resources.volatiles <= 0 && state.resources.food <= 0 && state.phase === 2) {
@@ -653,20 +782,40 @@ function checkEnding(state) {
     return 'extinction';
   }
 
-  if (state.phase === 2 && state.research >= 1 && state.shipProgress >= 1 && !state.triggeredEvents.has('launch_decision')) {
+  if (state.phase === 2 && state.research >= 1 && state.shipProgress >= 1
+      && state.tick >= IMPACT_TICK + TICKS_PER_MONTH * 3
+      && !state.triggeredEvents.has('launch_decision')) {
     const ev = EVENTS.find(e => e.id === 'launch_decision');
     if (ev) resolveEvent(state, ev);
     if (state.gameOver) return state.ending;
   }
 
-  const solarWindow = state.tick > IMPACT_TICK + TICKS_PER_YEAR * 30;
+  if (state.phase === 2 && !state.gameOver && state.tick >= IMPACT_TICK + TICKS_PER_YEAR * 20
+      && state.stableMonths >= 60 && stats.total >= 250 && isEcologicallyViable(state)) {
+    setEnding(state, 'solar', 'solar_stable', {
+      stability: stats.stability,
+      research: state.research,
+      population: stats.total,
+      resourceHealth: stats.resourceHealth,
+    });
+    return 'solar';
+  }
+
+  if (stats.total > 0 && stats.total < 80 && state.populationDeclineMonths >= 18) {
+    setEnding(state, 'extinction', 'population_zero', { population: stats.total });
+    return 'extinction';
+  }
+
+  const solarWindow = state.tick > IMPACT_TICK + TICKS_PER_YEAR * 8;
   const canSolar = solarWindow
-    && stats.stability > 55
-    && state.research < 0.95
+    && stats.stability > 42
+    && (state.research < 0.95 || state.shipProgress < 0.85)
     && isEcologicallyViable(state)
-    && isPopulationStable(state)
-    && stats.total >= 600
-    && state.populationDeclineMonths < 6;
+    && (isPopulationStable(state) || state.stableMonths >= 36)
+    && stats.total >= 250
+    && state.populationDeclineMonths < 12
+    && stats.resourceHealth > 0.28
+    && state.stableMonths >= 24;
 
   if (state.phase === 2 && canSolar) {
     setEnding(state, 'solar', 'solar_stable', {
@@ -676,6 +825,20 @@ function checkEnding(state) {
       resourceHealth: stats.resourceHealth,
     });
     return 'solar';
+  }
+
+  if (!state.gameOver && state.tick >= SIM_MAX_TICKS - 1) {
+    if (stats.total >= 200 && isEcologicallyViable(state) && state.stableMonths >= 24) {
+      setEnding(state, 'solar', 'solar_stable', {
+        stability: stats.stability, research: state.research,
+        population: stats.total, resourceHealth: stats.resourceHealth,
+      });
+      return 'solar';
+    }
+    if (stats.total <= 0) {
+      setEnding(state, 'extinction', inferExtinctionCause(state, stats));
+      return 'extinction';
+    }
   }
 
   return null;
@@ -696,6 +859,7 @@ function simulateTick(state) {
   if (events.length) resolveEvent(state, pick(events));
 
   aiConsiderLaws(state);
+  aiEmergencyProtocols(state);
   aiConsiderBuild(state);
   checkEnding(state);
 
