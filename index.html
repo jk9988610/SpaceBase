@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="星港余烬 - 一款太空站生存文字游戏，灵感来自《这是我的战争》">
+  <title>星港余烬 · SpaceBase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <!-- 开始界面 -->
+  <div id="start-screen" class="screen active">
+    <div class="start-content">
+      <div class="logo-block">
+        <span class="logo-sub">SPACE BASE</span>
+        <h1 class="logo-title">星港余烬</h1>
+        <p class="logo-tagline">封锁中的轨道站，每一口氧气都是赌注</p>
+      </div>
+      <div class="start-panel">
+        <p class="intro-text">
+          战争撕裂了星区航道。你的空间站被切断补给，幸存者蜷缩在破损的气密舱里。
+          白天修缮、分配资源；夜晚潜入死寂舱段搜刮物资。每一个决定，都关乎谁能活到救援抵达。
+        </p>
+        <button id="btn-start" class="btn btn-primary">开始生存</button>
+      </div>
+      <footer class="start-footer">灵感来自《这是我的战争》· 纯文字策略生存</footer>
+    </div>
+  </div>
+
+  <!-- 游戏结束界面 -->
+  <div id="end-screen" class="screen">
+    <div class="end-content">
+      <h2 id="end-title">信号中断</h2>
+      <p id="end-message"></p>
+      <div class="end-stats" id="end-stats"></div>
+      <button id="btn-restart" class="btn btn-primary">再次挑战</button>
+    </div>
+  </div>
+
+  <!-- 主游戏界面 -->
+  <div id="game-screen" class="screen">
+    <header class="game-header">
+      <div class="header-left">
+        <span class="station-name">轨道站 Ω-7</span>
+        <span class="day-badge">第 <span id="day-count">1</span> 天</span>
+        <span class="phase-badge" id="phase-badge">白昼</span>
+      </div>
+      <div class="header-resources">
+        <div class="resource" title="氧气">
+          <span class="res-icon">◎</span>
+          <span class="res-label">氧气</span>
+          <span class="res-value" id="res-oxygen">10</span>
+        </div>
+        <div class="resource" title="食物">
+          <span class="res-icon">◈</span>
+          <span class="res-label">食物</span>
+          <span class="res-value" id="res-food">8</span>
+        </div>
+        <div class="resource" title="净水">
+          <span class="res-icon">◇</span>
+          <span class="res-label">净水</span>
+          <span class="res-value" id="res-water">8</span>
+        </div>
+        <div class="resource" title="药品">
+          <span class="res-icon">✚</span>
+          <span class="res-label">药品</span>
+          <span class="res-value" id="res-medicine">3</span>
+        </div>
+        <div class="resource" title="废料">
+          <span class="res-icon">▣</span>
+          <span class="res-label">废料</span>
+          <span class="res-value" id="res-scrap">5</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="game-main">
+      <!-- 幸存者面板 -->
+      <aside class="panel survivors-panel">
+        <h2 class="panel-title">幸存者</h2>
+        <div id="survivors-list" class="survivors-list"></div>
+      </aside>
+
+      <!-- 中央叙事区 -->
+      <section class="panel narrative-panel">
+        <div class="narrative-header">
+          <h2 class="panel-title" id="scene-title">气密舱</h2>
+          <span class="mood-indicator" id="shelter-mood">气氛：紧张</span>
+        </div>
+        <div class="narrative-body" id="narrative-text">
+          <p>警报灯在舱壁上投下猩红的光斑。远处偶尔传来金属扭曲的呻吟。</p>
+        </div>
+        <div class="event-choices" id="event-choices"></div>
+      </section>
+
+      <!-- 行动面板 -->
+      <aside class="panel actions-panel">
+        <h2 class="panel-title">行动</h2>
+        <div id="actions-list" class="actions-list"></div>
+        <div class="night-note" id="night-note" hidden>
+          <p>夜色笼罩舱段。选择一名幸存者执行搜刮任务。</p>
+        </div>
+      </aside>
+    </main>
+
+    <!-- 日志 -->
+    <footer class="game-log">
+      <h3 class="log-title">舰桥日志</h3>
+      <div class="log-entries" id="log-entries"></div>
+    </footer>
+  </div>
+
+  <script src="js/game.js"></script>
+</body>
+</html>

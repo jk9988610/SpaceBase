@@ -1,0 +1,660 @@
+/* ===== 设计令牌 ===== */
+:root {
+  --bg-deep: #0a0c10;
+  --bg-panel: #12151c;
+  --bg-panel-hover: #1a1e28;
+  --bg-elevated: #1e2330;
+  --border-dim: #2a3040;
+  --border-glow: #3d4a62;
+  --text-primary: #d4dae6;
+  --text-secondary: #7a8499;
+  --text-muted: #4a5266;
+  --accent-amber: #c9a227;
+  --accent-amber-dim: #8a7020;
+  --accent-red: #c44b4b;
+  --accent-red-dim: #6b2a2a;
+  --accent-green: #4a9e6e;
+  --accent-blue: #4a7ec9;
+  --accent-cyan: #3a9e9e;
+  --danger: #e05555;
+  --warning: #e0a030;
+  --safe: #5cb87a;
+  --font-serif: 'Noto Serif SC', 'Songti SC', serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  --radius: 4px;
+  --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --transition: 0.2s ease;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-serif);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ===== 氛围层 ===== */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* ===== 屏幕切换 ===== */
+.screen {
+  display: none;
+  min-height: 100vh;
+}
+
+.screen.active {
+  display: flex;
+}
+
+/* ===== 开始界面 ===== */
+#start-screen {
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(201, 162, 39, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(196, 75, 75, 0.06) 0%, transparent 50%),
+    var(--bg-deep);
+}
+
+.start-content {
+  max-width: 560px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo-block {
+  margin-bottom: 2.5rem;
+}
+
+.logo-sub {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.35em;
+  color: var(--accent-amber-dim);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.logo-title {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-primary);
+  text-shadow: 0 0 40px rgba(201, 162, 39, 0.25);
+  margin-bottom: 0.75rem;
+}
+
+.logo-tagline {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.start-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  padding: 2rem;
+  box-shadow: var(--shadow-panel);
+}
+
+.intro-text {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 1.75rem;
+  text-align: left;
+  line-height: 1.8;
+}
+
+.start-footer {
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ===== 结束界面 ===== */
+#end-screen {
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+}
+
+.end-content {
+  max-width: 480px;
+  padding: 2rem;
+  text-align: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
+#end-title {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: var(--accent-red);
+}
+
+#end-message {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+  line-height: 1.8;
+}
+
+.end-stats {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-deep);
+  border-radius: var(--radius);
+}
+
+/* ===== 按钮 ===== */
+.btn {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  padding: 0.75rem 2rem;
+  border: 1px solid var(--border-glow);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-panel-hover);
+  border-color: var(--accent-amber);
+  color: var(--accent-amber);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent-amber-dim) 0%, #5a4818 100%);
+  border-color: var(--accent-amber);
+  color: #f0e6c8;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--accent-amber) 0%, var(--accent-amber-dim) 100%);
+  color: #fff;
+}
+
+.btn-choice {
+  width: 100%;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.btn-action {
+  width: 100%;
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.btn-action .action-cost {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.btn-action .action-desc {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.btn-scavenge {
+  border-color: var(--accent-blue);
+}
+
+.btn-scavenge:hover:not(:disabled) {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* ===== 游戏头部 ===== */
+.game-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-dim);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.station-name {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent-amber);
+  letter-spacing: 0.1em;
+}
+
+.day-badge {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+}
+
+.phase-badge {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+}
+
+.phase-badge.day {
+  background: rgba(201, 162, 39, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid var(--accent-amber-dim);
+}
+
+.phase-badge.night {
+  background: rgba(74, 126, 201, 0.15);
+  color: var(--accent-blue);
+  border: 1px solid #2a4a7a;
+}
+
+.header-resources {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.resource {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  transition: border-color var(--transition);
+}
+
+.resource.low {
+  border-color: var(--danger);
+  animation: pulse-danger 2s infinite;
+}
+
+.resource.critical {
+  border-color: var(--danger);
+  background: rgba(224, 85, 85, 0.1);
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.res-icon {
+  color: var(--accent-amber-dim);
+  font-size: 0.7rem;
+}
+
+.res-label {
+  color: var(--text-muted);
+}
+
+.res-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  min-width: 1.5rem;
+  text-align: right;
+}
+
+/* ===== 主布局 ===== */
+#game-screen {
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.game-main {
+  display: grid;
+  grid-template-columns: 240px 1fr 220px;
+  gap: 1px;
+  flex: 1;
+  background: var(--border-dim);
+  min-height: 0;
+}
+
+.panel {
+  background: var(--bg-panel);
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.panel-title {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+/* ===== 幸存者卡片 ===== */
+.survivors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.survivor-card {
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  transition: border-color var(--transition);
+}
+
+.survivor-card.selected {
+  border-color: var(--accent-amber);
+  box-shadow: 0 0 12px rgba(201, 162, 39, 0.15);
+}
+
+.survivor-card.dead {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+}
+
+.survivor-card.scavenging {
+  border-color: var(--accent-blue);
+}
+
+.survivor-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.survivor-role {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-bottom: 0.5rem;
+}
+
+.stat-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+}
+
+.stat-label {
+  width: 2rem;
+  color: var(--text-muted);
+}
+
+.stat-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stat-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.stat-fill.health { background: var(--safe); }
+.stat-fill.health.low { background: var(--warning); }
+.stat-fill.health.critical { background: var(--danger); }
+.stat-fill.hunger { background: var(--accent-amber); }
+.stat-fill.mood { background: var(--accent-blue); }
+
+.stat-value {
+  width: 1.5rem;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.survivor-status {
+  margin-top: 0.4rem;
+  font-size: 0.65rem;
+  color: var(--accent-red);
+  font-family: var(--font-mono);
+}
+
+/* ===== 叙事区 ===== */
+.narrative-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.narrative-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.narrative-header .panel-title {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  font-size: 1rem;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0.05em;
+}
+
+.mood-indicator {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding: 0.2rem 0.5rem;
+  background: var(--bg-deep);
+  border-radius: var(--radius);
+}
+
+.narrative-body {
+  flex: 1;
+  padding: 1rem 0;
+  font-size: 1rem;
+  line-height: 1.9;
+  color: var(--text-primary);
+}
+
+.narrative-body p {
+  margin-bottom: 1rem;
+  animation: fade-in 0.5s ease;
+}
+
+.narrative-body p:last-child {
+  margin-bottom: 0;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.event-choices {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-dim);
+}
+
+/* ===== 行动面板 ===== */
+.actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.night-note {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(74, 126, 201, 0.08);
+  border: 1px solid rgba(74, 126, 201, 0.2);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  color: var(--accent-blue);
+  line-height: 1.6;
+}
+
+/* ===== 日志 ===== */
+.game-log {
+  background: var(--bg-deep);
+  border-top: 1px solid var(--border-dim);
+  padding: 0.6rem 1.25rem;
+  max-height: 120px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-title {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.log-entries {
+  flex: 1;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.log-entry {
+  padding: 0.1rem 0;
+  animation: fade-in 0.3s ease;
+}
+
+.log-entry.important {
+  color: var(--accent-amber);
+}
+
+.log-entry.danger {
+  color: var(--accent-red);
+}
+
+.log-entry.success {
+  color: var(--safe);
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 900px) {
+  .game-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .survivors-panel {
+    order: 1;
+  }
+
+  .narrative-panel {
+    order: 2;
+    min-height: 300px;
+  }
+
+  .actions-panel {
+    order: 3;
+  }
+
+  .header-resources {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo-title {
+    font-size: 2rem;
+  }
+
+  .game-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .resource {
+    font-size: 0.65rem;
+    padding: 0.25rem 0.4rem;
+  }
+}
