@@ -151,7 +151,19 @@ function createInitialState(profileOrOpts = 'survival') {
 function queuePlayerEvent(state, event) {
   state.pendingEvent = event;
   state.currentEvent = { ...event, awaitingChoice: true };
-  addLog(state, `⚠ 待决事件：${event.title}`, 'important');
+  addLog(state, `◆ 关键节点：${event.title}（时间暂停，等待裁决）`, 'important');
+}
+
+function isPlayerNodeEvent(event) {
+  return !!event?.node;
+}
+
+function resolveEventAuto(state, event) {
+  const saved = state.aiProfile;
+  state.aiProfile = PLAYER_AUTO_PROFILE;
+  const { choice } = aiChoose(event.choices, state);
+  state.aiProfile = saved;
+  resolveEventWithChoice(state, event, choice, { actor: 'ai', reason: '例行处置', routine: true });
 }
 
 function captureStateSnapshot(state) {
@@ -582,6 +594,7 @@ function applyChoiceEffects(state, choice) {
   ['food', 'energy', 'ore', 'volatiles'].forEach(r => {
     if (e[r] !== undefined) state.resources[r] = clamp(state.resources[r] + e[r], 0, 500);
   });
+  if (e.research) state.research = clamp(state.research + e.research, 0, 1);
   if (e.diversity) state.pops.forEach(p => { if (rng() < 0.1) p.geneGroup = pick(GENE_GROUPS); });
   if (e.morale) state.pops.forEach(p => { p.morale = clamp(p.morale + e.morale, 0, 100); });
   if (e.radical) state.pops.forEach(p => { p.radicalism = clamp(p.radicalism + e.radical, 0, 100); });
@@ -619,17 +632,13 @@ function resolveEventWithChoice(state, event, choice, meta = {}) {
     });
   }
   const reason = meta.reason || (meta.actor === 'player' ? '玩家手动抉择' : '自动决策');
-  const decision = {
-    event: event.title,
-    choice: choice.label,
-    reason,
-    tick: state.tick,
-  };
-  state.lastAIDecision = decision;
-  archiveDecision(state, event.id, `${event.title}：${choice.label}`, reason);
-  const prefix = meta.actor === 'player' ? '[玩家]' : '[AI]';
-  addLog(state, `${prefix} ${event.title} → ${choice.label}`, 'important');
-  state.currentEvent = { ...event, resolved: choice };
+  if (!meta.routine) {
+    state.lastAIDecision = { event: event.title, choice: choice.label, reason, tick: state.tick };
+    archiveDecision(state, event.id, `${event.title}：${choice.label}`, reason);
+  }
+  const prefix = meta.actor === 'player' ? '[玩家]' : (meta.routine ? '[例行]' : '[AI]');
+  addLog(state, `${prefix} ${event.title} → ${choice.label}`, meta.routine ? '' : 'important');
+  if (!meta.routine) state.currentEvent = { ...event, resolved: choice };
   state.pendingEvent = null;
   state.triggeredEvents.add(event.id);
 }
@@ -655,7 +664,11 @@ function getEligibleEvents(state) {
     if (t.moraleBelow && stats.morale >= t.moraleBelow) return false;
     if (t.researchAbove && state.research < t.researchAbove) return false;
     if (t.diversityBelow && stats.diversity >= t.diversityBelow) return false;
-    if (!ev.trigger && !ev.minYear && rng() > 0.08) return false;
+    if (state.gameMode === 'player') {
+      if (!ev.trigger && !ev.minYear) return false;
+    } else if (!ev.trigger && !ev.minYear && rng() > 0.08) {
+      return false;
+    }
     return true;
   });
 }
@@ -901,18 +914,21 @@ function simulateTick(state) {
   const events = getEligibleEvents(state);
   if (events.length) {
     const event = pick(events);
-    if (state.gameMode === 'player') {
+    if (state.gameMode === 'player' && isPlayerNodeEvent(event)) {
       queuePlayerEvent(state, event);
       return state;
     }
-    resolveEvent(state, event);
+    if (state.gameMode === 'player') resolveEventAuto(state, event);
+    else resolveEvent(state, event);
   }
 
-  if (state.gameMode !== 'player') {
-    aiConsiderLaws(state);
-    aiEmergencyProtocols(state);
-    aiConsiderBuild(state);
-  }
+  const aiProfile = state.gameMode === 'player' ? PLAYER_AUTO_PROFILE : state.aiProfile;
+  const savedProfile = state.aiProfile;
+  state.aiProfile = aiProfile;
+  aiConsiderLaws(state);
+  aiEmergencyProtocols(state);
+  aiConsiderBuild(state);
+  state.aiProfile = savedProfile;
   checkEnding(state);
 
   return state;

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260812-player-v1">
+  <link rel="stylesheet" href="css/style.css?v=20260812-player-v2">
 </head>
 <body>
   <div class="scanlines" aria-hidden="true"></div>
@@ -35,8 +35,9 @@
         <!-- 玩家执政模式 -->
         <div id="panel-player" class="mode-panel active">
           <p class="intro-text">
-            你担任基地理事会统筹官。选择初始太空基地模板，在道德两难事件中亲自裁决。
-            事件触发时游戏自动暂停，抉择后恢复原先运行速度。
+            你担任基地理事会统筹官。选择初始太空基地，观察人口、资源与法律随时间演变。
+            <strong>仅关键节点</strong>会暂停时间等待你的裁决（约第 5、8、42 年、撞击后与终局），
+            其余事件由理事会例行处置，不打断观战节奏。
           </p>
           <p class="profile-label">选择初始太空基地</p>
           <div class="base-grid" id="base-grid"></div>
@@ -158,19 +159,19 @@
       <div class="event-modal-backdrop"></div>
       <div class="event-modal-card">
         <div class="event-modal-header">
-          <span class="event-modal-tag">道德两难</span>
+          <span class="event-modal-tag">关键节点</span>
           <h2 id="event-modal-title">事件标题</h2>
         </div>
         <p id="event-modal-text" class="event-modal-text"></p>
         <div id="event-modal-choices" class="event-modal-choices"></div>
-        <p class="event-modal-hint">选择后将恢复先前的运行速度</p>
+        <p class="event-modal-hint">关键节点抉择 · 确认后恢复先前的运行速度</p>
       </div>
     </div>
   </div>
 
-  <script src="js/data.js?v=20260812-player-v1"></script>
-  <script src="js/engine.js?v=20260812-player-v1"></script>
-  <script src="js/ui.js?v=20260812-player-v1"></script>
-  <script src="js/main.js?v=20260812-player-v1"></script>
+  <script src="js/data.js?v=20260812-player-v2"></script>
+  <script src="js/engine.js?v=20260812-player-v2"></script>
+  <script src="js/ui.js?v=20260812-player-v2"></script>
+  <script src="js/main.js?v=20260812-player-v2"></script>
 </body>
 </html>

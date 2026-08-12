@@ -3,7 +3,7 @@
  */
 
 /** 构建版本号：更新资源缓存 */
-const BUILD_VERSION = '20260812-player-v1';
+const BUILD_VERSION = '20260812-player-v2';
 
 const TICKS_PER_MONTH = 30;
 const TICKS_PER_YEAR = 365;
@@ -230,14 +230,32 @@ const ENDING_CAUSES = {
   },
 };
 
-/** 事件库：AI 自动裁决 */
+/** 玩家模式：仅 node:true 的事件会暂停并要求抉择 */
+const PLAYER_AUTO_PROFILE = 'survival';
+
+/** 事件库：AI 自动裁决；node:true 表示玩家模式关键节点 */
 const EVENTS = [
+  {
+    id: 'node_y5_policy',
+    title: '五年执政纲领',
+    phase: 1,
+    once: true,
+    minYear: 5,
+    node: true,
+    text: '基地运转满五年。理事会要求你确立下一阶段优先方向——这将影响移民、劳动与资源策略。',
+    choices: [
+      { id: 'survival', label: '存续优先：收紧移民、保障粮储', effects: { law: { immigration: 'closed', welfare: 'austerity' } }, score: { resources: 2, survival: 2 } },
+      { id: 'growth', label: '扩张优先：开放边境、加速建设', effects: { law: { immigration: 'open', labor: 'shift' } }, score: { population: 2, resources: 0.5 } },
+      { id: 'balance', label: '均衡路线：维持配额、稳步发展', effects: { law: { immigration: 'quota', welfare: 'ration' }, political: 10 }, score: { loyalty: 1.5, morale: 1 } },
+    ],
+  },
   {
     id: 'last_quota',
     title: '最后配额',
     phase: 1,
     minYear: 42,
     once: true,
+    node: true,
     text: '地球联盟通知：最后一艘移民船可载 300 人，或同吨位生命维持物资。',
     choices: [
       { id: 'people', label: '载移民', effects: { pop: 300, food: -20, diversity: 0.05 }, score: { population: 2, diversity: 1, resources: -1 } },
@@ -260,6 +278,8 @@ const EVENTS = [
     id: 'gene_dispute',
     title: '基因筛查争议',
     phase: 2,
+    once: true,
+    node: true,
     text: '医护要求强制筛查近亲婚配；宗教派系 Pop 抵制。',
     choices: [
       { id: 'force', label: '强制筛查', effects: { diversity: 0.04, radical: 20, law: { genetics: 'mandatory' } }, score: { diversity: 1.5, loyalty: -1 } },
@@ -281,6 +301,9 @@ const EVENTS = [
     id: 'refugee',
     title: '轨道难民',
     phase: 1,
+    once: true,
+    minYear: 8,
+    node: true,
     text: '一艘超载逃生舱请求对接。接纳将消耗大量挥发物。',
     choices: [
       { id: 'accept', label: '接纳难民', effects: { pop: 120, volatiles: -15, diversity: 0.03, morale: 5 }, score: { population: 1.5, diversity: 1, resources: -1 } },
@@ -291,6 +314,8 @@ const EVENTS = [
   {
     id: 'food_riot',
     title: '配给骚乱',
+    once: true,
+    node: true,
     trigger: { moraleBelow: 35 },
     text: '食物储备不足引发舱段骚乱，激进派系煽动冲击仓库。',
     choices: [
@@ -304,6 +329,7 @@ const EVENTS = [
     title: '是否发射？',
     phase: 2,
     once: true,
+    node: true,
     trigger: { researchAbove: 0.95 },
     text: '聚变世代飞船完工，可载 40,000 人。当前总人口超过载客量。',
     choices: [
@@ -316,6 +342,8 @@ const EVENTS = [
   {
     id: 'ecosystem_collapse',
     title: '生态级联崩溃',
+    once: true,
+    node: true,
     trigger: { volatilesBelow: 10, foodBelow: 5 },
     text: '氧碳循环断裂，农业舱大面积枯死。',
     choices: [
@@ -365,6 +393,20 @@ const EVENTS = [
     choices: [
       { id: 'build', label: '投入建设', effects: { food: 40, volatiles: -10, ore: -15 }, score: { resources: 2 } },
       { id: 'defer', label: '暂缓', effects: { morale: -5 }, score: { morale: -0.5 } },
+    ],
+  },
+  {
+    id: 'node_impact_briefing',
+    title: '撞击后存续方针',
+    phase: 2,
+    once: true,
+    minYear: 50,
+    node: true,
+    text: '地球毁灭，太空纪元开始。理事会必须在孤立状态下选定文明存续的总方针。',
+    choices: [
+      { id: 'solar_path', label: '太阳系自给：深耕基地闭环', effects: { food: 30, volatiles: 20, morale: 5 }, score: { resources: 2, loyalty: 1 } },
+      { id: 'stellar_path', label: '星际远航：倾斜科研与船坞', effects: { research: 0.08, ore: 25, morale: -5 }, score: { research: 2 } },
+      { id: 'consolidate', label: '收缩整顿：削减人口换稳定', effects: { pop: -150, food: 50, energy: 40, morale: 10 }, score: { survival: 2, morale: 1 } },
     ],
   },
   {
