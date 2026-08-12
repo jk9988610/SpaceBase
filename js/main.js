@@ -5,10 +5,27 @@
 let loopId = null;
 let speed = 1;
 let ticksPerFrame = 1;
-let pendingWatchProfile = null;
+let speedBeforeEventPause = 1;
+let pausedForEvent = false;
+let selectedBaseId = null;
+
+function startPlayerGame(baseId) {
+  if (loopId) cancelAnimationFrame(loopId);
+  pausedForEvent = false;
+  gameState = createPlayerState(baseId);
+  addLog(gameState, '文明种子计划启动。理事会授予你最高决策权。', 'important');
+  addLog(gameState, `执政基地：${gameState.baseName}（${gameState.baseCode}）`, 'important');
+  showScreen('game-screen');
+  renderGame(gameState);
+  speed = 1;
+  ticksPerFrame = 1;
+  updateSpeedLabel(speed);
+  runLoop();
+}
 
 function startWatchMode(profile) {
   if (loopId) cancelAnimationFrame(loopId);
+  pausedForEvent = false;
   gameState = createInitialState(profile);
   addLog(gameState, '文明种子计划启动。AI 统筹官接管全部决策权。', 'important');
   addLog(gameState, `决策人格：${AI_PROFILES[profile].name} · 种子 ${gameState.simSeed}`, 'important');
@@ -20,11 +37,11 @@ function startWatchMode(profile) {
   runLoop();
 }
 
-/** 单人格极速推演：与批量推演共用同一路径，保证结果一致 */
+/** 单人格极速推演：与批量推演共用同一路径 */
 async function startFastSimulation(profile) {
   if (loopId) cancelAnimationFrame(loopId);
   const container = document.getElementById('sim-results');
-  const buttons = document.querySelectorAll('[data-profile], #btn-sim-all, #btn-watch');
+  const buttons = document.querySelectorAll('[data-profile], #btn-sim-all, #btn-watch, #btn-start-player');
   container.hidden = false;
   container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[profile].name}…</p>`;
   buttons.forEach(b => { b.disabled = true; });
@@ -32,9 +49,8 @@ async function startFastSimulation(profile) {
   try {
     gameState = await runProfileSimulationAsync(profile, SIM_MAX_TICKS);
     container.hidden = true;
-    if (gameState.gameOver) {
-      showEndScreen(gameState);
-    } else {
+    if (gameState.gameOver) showEndScreen(gameState);
+    else {
       addLog(gameState, `推演 ${gameState.tick} 日未达结局（上限 ${SIM_MAX_TICKS}）`, 'important');
       showScreen('game-screen');
       renderGame(gameState);
@@ -42,10 +58,33 @@ async function startFastSimulation(profile) {
     }
   } catch (err) {
     console.error(err);
-    container.innerHTML = `<p class="sim-error">推演失败：${err.message}。请强制刷新页面（Ctrl+Shift+R）后重试。</p>`;
+    container.innerHTML = `<p class="sim-error">推演失败：${err.message}</p>`;
   } finally {
     buttons.forEach(b => { b.disabled = false; });
   }
+}
+
+function handlePendingEvent() {
+  if (!gameState?.pendingEvent || pausedForEvent) return;
+  pausedForEvent = true;
+  speedBeforeEventPause = speed || 1;
+  setSpeed(0);
+  document.getElementById('speed-label').textContent = '事件暂停';
+  renderGame(gameState);
+  showEventChoiceModal(gameState, (choice) => {
+    resolveEventWithChoice(gameState, gameState.pendingEvent, choice, { actor: 'player' });
+    hideEventChoiceModal();
+    pausedForEvent = false;
+    checkEnding(gameState);
+    renderGame(gameState);
+    if (gameState.gameOver) {
+      showEndScreen(gameState);
+      return;
+    }
+    const resume = speedBeforeEventPause || 1;
+    setSpeed(resume);
+    runLoop();
+  });
 }
 
 function runLoop() {
@@ -57,7 +96,17 @@ function runLoop() {
   function frame(now) {
     try {
       if (!gameState || gameState.gameOver) return;
-      if (speed === 0) { loopId = requestAnimationFrame(frame); return; }
+
+      if (gameState.pendingEvent) {
+        handlePendingEvent();
+        loopId = requestAnimationFrame(frame);
+        return;
+      }
+
+      if (speed === 0) {
+        loopId = requestAnimationFrame(frame);
+        return;
+      }
 
       if (last === 0) last = now;
       acc += now - last;
@@ -65,15 +114,23 @@ function runLoop() {
       const step = interval / speed;
 
       while (acc >= step) {
+        if (gameState.pendingEvent || gameState.gameOver) break;
         for (let i = 0; i < ticksPerFrame; i++) {
-          if (gameState.gameOver) break;
+          if (gameState.gameOver || gameState.pendingEvent) break;
           simulateTick(gameState);
         }
         acc -= step;
-        if (gameState.gameOver) break;
+        if (gameState.gameOver || gameState.pendingEvent) break;
       }
 
       renderGame(gameState);
+
+      if (gameState.pendingEvent) {
+        handlePendingEvent();
+        loopId = requestAnimationFrame(frame);
+        return;
+      }
+
       if (gameState.gameOver) {
         showEndScreen(gameState);
         return;
@@ -90,14 +147,14 @@ function runLoop() {
 }
 
 function setSpeed(s) {
+  if (pausedForEvent) return;
   speed = s;
   ticksPerFrame = s >= 16 ? 8 : s >= 4 ? 3 : 1;
-  updateSpeedLabel(s);
+  updateSpeedLabel(speed);
 }
 
-/** 观战界面内极速推演 */
 async function fastSimulate() {
-  if (!gameState) return;
+  if (!gameState || gameState.gameMode === 'player') return;
   const profile = gameState.aiProfile;
   if (loopId) cancelAnimationFrame(loopId);
   setSpeed(0);
@@ -106,7 +163,7 @@ async function fastSimulate() {
   renderGame(gameState);
   if (gameState.gameOver) showEndScreen(gameState);
   else {
-    addLog(gameState, `推演 ${gameState.tick} 日未达结局（上限 ${SIM_MAX_TICKS}）`, 'important');
+    addLog(gameState, `推演 ${gameState.tick} 日未达结局`, 'important');
     renderGame(gameState);
     runLoop();
   }
@@ -130,46 +187,87 @@ function showWatchProfilePicker() {
   });
 }
 
+function initModeTabs() {
+  const tabs = document.querySelectorAll('[data-mode-tab]');
+  const panels = { player: document.getElementById('panel-player'), ai: document.getElementById('panel-ai') };
+  tabs.forEach(tab => {
+    tab.onclick = () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      Object.values(panels).forEach(p => p?.classList.remove('active'));
+      panels[tab.dataset.modeTab]?.classList.add('active');
+    };
+  });
+}
+
+function initBaseSelection() {
+  const ids = Object.keys(STARTING_BASES);
+  selectedBaseId = ids[0];
+  renderBaseSelection(selectedBaseId);
+  const grid = document.getElementById('base-grid');
+  const startBtn = document.getElementById('btn-start-player');
+
+  grid?.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-base]');
+    if (!card) return;
+    selectedBaseId = card.dataset.base;
+    renderBaseSelection(selectedBaseId);
+    if (startBtn) startBtn.disabled = false;
+  });
+
+  if (startBtn) {
+    startBtn.disabled = false;
+    startBtn.onclick = () => {
+      if (selectedBaseId) startPlayerGame(selectedBaseId);
+    };
+  }
+}
+
 function initUI() {
   const verEl = document.getElementById('build-version');
   if (verEl && typeof BUILD_VERSION !== 'undefined') {
     verEl.textContent = `版本 ${BUILD_VERSION}`;
   }
 
+  initModeTabs();
+  initBaseSelection();
+
   document.querySelectorAll('[data-profile]').forEach(btn => {
     btn.onclick = () => startFastSimulation(btn.dataset.profile);
   });
 
-  document.getElementById('btn-watch').onclick = () => showWatchProfilePicker();
+  document.getElementById('btn-watch')?.addEventListener('click', showWatchProfilePicker);
 
   document.getElementById('btn-restart').onclick = () => {
     if (loopId) cancelAnimationFrame(loopId);
+    pausedForEvent = false;
+    hideEventChoiceModal();
     document.getElementById('sim-results').hidden = true;
     showScreen('start-screen');
   };
 
-  document.getElementById('btn-pause').onclick = () => setSpeed(0);
+  document.getElementById('btn-pause').onclick = () => {
+    if (!pausedForEvent) setSpeed(0);
+  };
   document.getElementById('btn-speed-1').onclick = () => setSpeed(1);
   document.getElementById('btn-speed-4').onclick = () => setSpeed(4);
   document.getElementById('btn-speed-16').onclick = () => setSpeed(16);
   document.getElementById('btn-fast').onclick = () => fastSimulate();
-
-  document.getElementById('btn-sim-all').onclick = () => {
+  document.getElementById('btn-sim-all')?.addEventListener('click', () => {
     runAllEndings(Object.keys(AI_PROFILES));
-  };
+  });
 }
 
-/** 批量推演：与单人格极速共用 runProfileSimulationAsync */
 async function runAllEndings(profiles) {
   const container = document.getElementById('sim-results');
   const btn = document.getElementById('btn-sim-all');
-  const profileBtns = document.querySelectorAll('[data-profile], #btn-watch');
+  const profileBtns = document.querySelectorAll('[data-profile], #btn-watch, #btn-start-player');
   container.hidden = false;
   btn.disabled = true;
   profileBtns.forEach(b => { b.disabled = true; });
 
-  const results = [];
   try {
+    const results = [];
     for (let idx = 0; idx < profiles.length; idx++) {
       const p = profiles[idx];
       container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[p].name}（${idx + 1}/${profiles.length}）…</p>`;
@@ -179,7 +277,7 @@ async function runAllEndings(profiles) {
     }
 
     container.innerHTML = `
-      <h3>全人格推演结果 <span class="sim-note">（同人格可复现 · ${BUILD_VERSION}）</span></h3>
+      <h3>全人格推演结果 <span class="sim-note">（${BUILD_VERSION}）</span></h3>
       <div class="sim-grid">
         ${results.map(r => `
           <div class="sim-card">
@@ -192,7 +290,7 @@ async function runAllEndings(profiles) {
       </div>`;
   } catch (err) {
     console.error(err);
-    container.innerHTML = `<p class="sim-error">批量推演失败：${err.message}。请强制刷新（Ctrl+Shift+R）。</p>`;
+    container.innerHTML = `<p class="sim-error">批量推演失败：${err.message}</p>`;
   } finally {
     btn.disabled = false;
     profileBtns.forEach(b => { b.disabled = false; });

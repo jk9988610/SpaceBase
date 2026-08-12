@@ -3,7 +3,7 @@
  */
 
 /** 构建版本号：更新资源缓存 */
-const BUILD_VERSION = '20260812-survival-v2';
+const BUILD_VERSION = '20260812-player-v1';
 
 const TICKS_PER_MONTH = 30;
 const TICKS_PER_YEAR = 365;
@@ -100,6 +100,54 @@ const LAW_GROUPS = {
       wartime: { name: '战时共产主义', output: 1.2, morale: -8, foodCost: 0.85 },
     },
     default: 'planned',
+  },
+};
+
+/** 开局太空基地模板（类 HOI4 选国家） */
+const STARTING_BASES = {
+  frontier: {
+    name: '开拓者前哨站',
+    code: 'Ω-1',
+    tagline: '均衡存续',
+    desc: '军民比例适中，资源储备均衡。推荐首次执政。',
+    difficulty: '推荐',
+    resources: { energy: 140, food: 180, ore: 80, volatiles: 120 },
+    compartments: { habitat: 2, agriculture: 3, reactor: 3, shipyard: 1, lab: 1, medical: 1, archive: 1, immigration: 1 },
+    popAdjust: {},
+    laws: null,
+  },
+  industrial: {
+    name: '小行星工业枢纽',
+    code: 'Σ-7',
+    tagline: '矿石能源',
+    desc: '反应堆与船坞占优，农业偏弱。适合工业扩张路线。',
+    difficulty: '中等',
+    resources: { energy: 165, food: 115, ore: 130, volatiles: 95 },
+    compartments: { habitat: 2, agriculture: 2, reactor: 4, shipyard: 2, lab: 1, medical: 1, archive: 1, immigration: 1 },
+    popAdjust: { miner: 80, eco_engineer: -30 },
+    laws: { economy: 'market', labor: 'shift' },
+  },
+  arboretum: {
+    name: '生态方舟',
+    code: 'Ψ-3',
+    tagline: '农业闭环',
+    desc: '农业舱与挥发物储备充足，医护编制强化。适合人道存续。',
+    difficulty: '简单',
+    resources: { energy: 115, food: 230, ore: 55, volatiles: 155 },
+    compartments: { habitat: 2, agriculture: 4, reactor: 2, shipyard: 1, lab: 1, medical: 2, archive: 1, immigration: 1 },
+    popAdjust: { eco_engineer: 50, medic: 40, miner: -40 },
+    laws: { welfare: 'needs', immigration: 'selective' },
+  },
+  academy: {
+    name: '科研先导站',
+    code: 'Δ-9',
+    tagline: '科技启航',
+    desc: '实验室与学者占优，短期粮食紧张。适合星际远航结局。',
+    difficulty: '困难',
+    resources: { energy: 155, food: 95, ore: 75, volatiles: 105 },
+    compartments: { habitat: 2, agriculture: 2, reactor: 3, shipyard: 1, lab: 3, medical: 1, archive: 2, immigration: 1 },
+    popAdjust: { scholar: 70, colonist: -50 },
+    laws: { governance: 'technocrat', genetics: 'mandatory' },
   },
 };
 

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260812-survival-v2">
+  <link rel="stylesheet" href="css/style.css?v=20260812-player-v1">
 </head>
 <body>
   <div class="scanlines" aria-hidden="true"></div>
@@ -24,24 +24,44 @@
       <div class="logo-block">
         <span class="logo-sub">SPACEBASE</span>
         <h1 class="logo-title">太空基地</h1>
-        <p class="logo-tagline">小行星倒计时 50 年 · AI 统筹官自动推演文明走向</p>
+        <p class="logo-tagline">小行星倒计时 50 年 · 文明种子存续模拟</p>
       </div>
       <div class="start-panel">
-        <p class="intro-text">
-          无需人类抉择。选择 AI 统筹官人格，观看其依据 Pop 群体态势、现行法律与资源压力，
-          自动处理道德两难事件、修订法案、扩建舱室，直至灭绝、存续、启航或分裂悲剧。
-        </p>
-        <p class="profile-label">选择 AI 决策人格</p>
-        <div class="profile-grid">
-          <button class="btn btn-profile" data-profile="survival">生存优先</button>
-          <button class="btn btn-profile" data-profile="expansion">扩张优先</button>
-          <button class="btn btn-profile" data-profile="humanitarian">人道主义</button>
-          <button class="btn btn-profile" data-profile="authoritarian">威权稳定</button>
-          <button class="btn btn-profile" data-profile="technocrat">科技至上</button>
+        <div class="mode-tabs">
+          <button type="button" class="mode-tab active" data-mode-tab="player">玩家执政</button>
+          <button type="button" class="mode-tab" data-mode-tab="ai">AI 观战</button>
         </div>
-        <p class="profile-hint">点击人格将极速推演至结局（与批量推演同路径，结果可复现）</p>
-        <button id="btn-watch" class="btn btn-secondary btn-watch">观战模式（慢速可视化）</button>
-        <button id="btn-sim-all" class="btn btn-secondary">批量推演全部人格结局</button>
+
+        <!-- 玩家执政模式 -->
+        <div id="panel-player" class="mode-panel active">
+          <p class="intro-text">
+            你担任基地理事会统筹官。选择初始太空基地模板，在道德两难事件中亲自裁决。
+            事件触发时游戏自动暂停，抉择后恢复原先运行速度。
+          </p>
+          <p class="profile-label">选择初始太空基地</p>
+          <div class="base-grid" id="base-grid"></div>
+          <button id="btn-start-player" class="btn btn-primary btn-start-game" disabled>开始执政</button>
+        </div>
+
+        <!-- AI 观战模式 -->
+        <div id="panel-ai" class="mode-panel">
+          <p class="intro-text">
+            无需人类抉择。选择 AI 统筹官人格，观看其依据 Pop 态势、法律与资源压力
+            自动处理事件、修订法案、扩建舱室，直至各类结局。
+          </p>
+          <p class="profile-label">选择 AI 决策人格</p>
+          <div class="profile-grid">
+            <button class="btn btn-profile" data-profile="survival">生存优先</button>
+            <button class="btn btn-profile" data-profile="expansion">扩张优先</button>
+            <button class="btn btn-profile" data-profile="humanitarian">人道主义</button>
+            <button class="btn btn-profile" data-profile="authoritarian">威权稳定</button>
+            <button class="btn btn-profile" data-profile="technocrat">科技至上</button>
+          </div>
+          <p class="profile-hint">点击人格将极速推演至结局（与批量推演同路径，结果可复现）</p>
+          <button id="btn-watch" class="btn btn-secondary btn-watch">观战模式（慢速可视化）</button>
+          <button id="btn-sim-all" class="btn btn-secondary">批量推演全部人格结局</button>
+        </div>
+
         <div id="sim-results" class="sim-results" hidden></div>
       </div>
       <footer class="start-footer">
@@ -66,7 +86,8 @@
   <div id="game-screen" class="screen">
     <header class="game-header">
       <div class="header-left">
-        <span class="station-name">太空基地 Ω-1</span>
+        <span class="station-name" id="station-name">太空基地 Ω-1</span>
+        <span class="mode-badge player" id="mode-badge">玩家执政</span>
         <span class="day-badge" id="date-display">地球纪元 Y0</span>
         <span class="phase-badge earth" id="phase-badge">地球纪元</span>
         <span class="ai-badge" id="ai-profile-badge">AI</span>
@@ -110,6 +131,7 @@
         </div>
         <div class="narrative-body" id="narrative-text"></div>
         <div id="ai-decision" class="ai-decision" hidden></div>
+        <div id="event-pause-banner" class="event-pause-banner" hidden>⏸ 事件待决 — 时间已暂停</div>
       </section>
 
       <aside class="panel laws-panel">
@@ -130,11 +152,25 @@
       <h3 class="log-title">舰桥档案日志</h3>
       <div class="log-entries" id="log-entries"></div>
     </footer>
+
+    <!-- 事件抉择弹窗（玩家模式） -->
+    <div id="event-modal" class="event-modal" hidden>
+      <div class="event-modal-backdrop"></div>
+      <div class="event-modal-card">
+        <div class="event-modal-header">
+          <span class="event-modal-tag">道德两难</span>
+          <h2 id="event-modal-title">事件标题</h2>
+        </div>
+        <p id="event-modal-text" class="event-modal-text"></p>
+        <div id="event-modal-choices" class="event-modal-choices"></div>
+        <p class="event-modal-hint">选择后将恢复先前的运行速度</p>
+      </div>
+    </div>
   </div>
 
-  <script src="js/data.js?v=20260812-survival-v2"></script>
-  <script src="js/engine.js?v=20260812-survival-v2"></script>
-  <script src="js/ui.js?v=20260812-survival-v2"></script>
-  <script src="js/main.js?v=20260812-survival-v2"></script>
+  <script src="js/data.js?v=20260812-player-v1"></script>
+  <script src="js/engine.js?v=20260812-player-v1"></script>
+  <script src="js/ui.js?v=20260812-player-v1"></script>
+  <script src="js/main.js?v=20260812-player-v1"></script>
 </body>
 </html>
