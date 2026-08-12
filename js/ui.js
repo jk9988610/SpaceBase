@@ -43,11 +43,13 @@ function renderGame(state) {
   document.getElementById('stat-diversity').textContent = (stats.diversity * 100).toFixed(0) + '%';
   document.getElementById('stat-stability').textContent = stats.stability.toFixed(0);
   document.getElementById('stat-research').textContent = (state.research * 100).toFixed(0) + '%';
+  document.getElementById('stat-ship').textContent = (state.shipProgress * 100).toFixed(0);
   document.getElementById('stat-morale').textContent = stats.morale.toFixed(0);
   document.getElementById('stat-political').textContent = Math.floor(state.political);
 
   renderPops(state);
   renderLaws(state);
+  renderCompartments(state);
   renderNarrative(state);
   renderLog(state);
   renderArchive(state);
@@ -94,6 +96,16 @@ function renderLaws(state) {
         <span class="law-value">${opt.name}</span>
       </div>`;
   }).join('');
+}
+
+function renderCompartments(state) {
+  const el = document.getElementById('compartments-list');
+  if (!el) return;
+  el.innerHTML = Object.entries(state.compartments).map(([id, n]) => {
+    const c = COMPARTMENTS[id];
+    if (!n) return '';
+    return `<div class="comp-item"><span>${c.name}</span><span class="comp-count">×${n}</span></div>`;
+  }).filter(Boolean).join('') || '<span class="empty-comp">无</span>';
 }
 
 function renderNarrative(state) {
@@ -190,7 +202,7 @@ function showEndScreen(state) {
 
   document.getElementById('end-stats').innerHTML = `
     <div class="report-block">
-      <p>AI 人格：${report.aiProfile} · ${report.phase} · 存续 ${report.years} 年</p>
+      <p>AI 人格：${report.aiProfile} · ${report.phase} · 存续 ${report.years} 年 · 种子 ${report.simSeed}</p>
       <p>终局人口 ${report.population} · 多样性 ${report.diversity} · 稳定 ${report.stability} · 科研 ${report.research}</p>
     </div>
 

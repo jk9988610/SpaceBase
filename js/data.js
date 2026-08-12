@@ -6,6 +6,8 @@ const TICKS_PER_MONTH = 30;
 const TICKS_PER_YEAR = 365;
 const EARTH_COUNTDOWN_YEARS = 50;
 const IMPACT_TICK = EARTH_COUNTDOWN_YEARS * TICKS_PER_YEAR;
+/** 单局/批量/极速推演统一上限 */
+const SIM_MAX_TICKS = 40000;
 
 const RESOURCES = ['energy', 'food', 'ore', 'volatiles'];
 

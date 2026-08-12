@@ -332,10 +332,35 @@ body {
   margin-top: 0.15rem;
 }
 
-.sim-cause {
+.sim-seed {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 0.2rem;
+}
+
+.sim-note {
   font-size: 0.7rem;
-  color: var(--accent-red);
-  margin: 0.2rem 0;
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.comp-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  padding: 0.2rem 0;
+  color: var(--text-secondary);
+}
+
+.comp-count {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+}
+
+.empty-comp {
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 #end-title {

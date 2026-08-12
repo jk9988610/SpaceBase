@@ -2,13 +2,37 @@
  * 太空基地 Spacebase — 模拟引擎：Pop、法律、AI、档案
  */
 
+let _rngState = 1;
+let _popCounter = 0;
+
+function hashString(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function initRng(seed) {
+  _rngState = (seed >>> 0) || 1;
+}
+
+function rng() {
+  _rngState |= 0;
+  _rngState = (_rngState + 0x6D2B79F5) | 0;
+  let t = Math.imul(_rngState ^ (_rngState >>> 15), 1 | _rngState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function rand(min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
+function pick(arr) { return arr[Math.floor(rng() * arr.length)]; }
 
 function createPop(profession, count, opts = {}) {
   return {
-    id: `${profession}_${opts.geneGroup || 'A'}_${opts.ideology || 'technocrat'}_${Date.now()}_${Math.random()}`,
+    id: `${profession}_${opts.geneGroup || 'A'}_${_popCounter++}`,
     profession,
     geneGroup: opts.geneGroup || pick(GENE_GROUPS),
     habitat: opts.habitat || 'habitat',
@@ -24,6 +48,10 @@ function createPop(profession, count, opts = {}) {
 }
 
 function createInitialState(aiProfile = 'survival') {
+  const simSeed = hashString(aiProfile);
+  initRng(simSeed);
+  _popCounter = 0;
+
   const laws = {};
   Object.entries(LAW_GROUPS).forEach(([k, g]) => { laws[k] = g.default; });
 
@@ -46,6 +74,7 @@ function createInitialState(aiProfile = 'survival') {
     tick: 0,
     phase: 1,
     aiProfile,
+    simSeed,
     laws,
     pops,
     compartments,
@@ -164,7 +193,7 @@ function calcBirthRate(state) {
   if (!total) return 0;
   const foodOk = state.resources.food > total * 0.05 ? 1 : 0.3;
   const div = calcDiversity(state);
-  return 0.0008 * foodOk * (0.7 + div * 0.5);
+  return 0.0007 * foodOk * (0.7 + div * 0.5);
 }
 
 function calcDeathRate(state) {
@@ -207,7 +236,7 @@ function tickCompartments(state) {
 
   const agriSlots = counts.agriculture * COMPARTMENTS.agriculture.slots;
   const agriStaff = Math.min(profCounts.eco_engineer || 0, agriSlots * 50);
-  food += (agriStaff / 50) * COMPARTMENTS.agriculture.output.food * lm.output;
+  food += (agriStaff / 50) * COMPARTMENTS.agriculture.output.food * lm.output * 1.15;
 
   const reactSlots = counts.reactor * COMPARTMENTS.reactor.slots;
   const reactStaff = Math.min(profCounts.nuclear_ops || 0, reactSlots * 40);
@@ -366,7 +395,7 @@ function scoreChoice(choice, state, profile) {
     const weight = w[k] || w.resources || 1;
     score += v * weight;
   });
-  score += (Math.random() - 0.5) * 0.3;
+  score += (rng() - 0.5) * 0.3;
   return score;
 }
 
@@ -399,7 +428,7 @@ function applyChoiceEffects(state, choice) {
   ['food', 'energy', 'ore', 'volatiles'].forEach(r => {
     if (e[r] !== undefined) state.resources[r] = clamp(state.resources[r] + e[r], 0, 500);
   });
-  if (e.diversity) state.pops.forEach(p => { if (Math.random() < 0.1) p.geneGroup = pick(GENE_GROUPS); });
+  if (e.diversity) state.pops.forEach(p => { if (rng() < 0.1) p.geneGroup = pick(GENE_GROUPS); });
   if (e.morale) state.pops.forEach(p => { p.morale = clamp(p.morale + e.morale, 0, 100); });
   if (e.radical) state.pops.forEach(p => { p.radicalism = clamp(p.radicalism + e.radical, 0, 100); });
   if (e.loyalty) state.pops.forEach(p => { p.loyalty = clamp(p.loyalty + e.loyalty, 0, 100); });
@@ -410,7 +439,7 @@ function applyChoiceEffects(state, choice) {
     state.outputPenalty = e.outputPenalty;
     state.outputPenaltyTicks = e.duration || 5;
   }
-  if (e.meltdownRisk && Math.random() < e.meltdownRisk) {
+  if (e.meltdownRisk && rng() < e.meltdownRisk) {
     addLog(state, '反应堆熔毁！能源舱损毁。', 'danger');
     state.compartments.reactor = Math.max(0, state.compartments.reactor - 1);
     state.pops.forEach(p => { if (p.profession === 'nuclear_ops') p.count = Math.floor(p.count * 0.6); });
@@ -461,7 +490,7 @@ function getEligibleEvents(state) {
     if (t.moraleBelow && stats.morale >= t.moraleBelow) return false;
     if (t.researchAbove && state.research < t.researchAbove) return false;
     if (t.diversityBelow && stats.diversity >= t.diversityBelow) return false;
-    if (!ev.trigger && !ev.minYear && Math.random() > 0.08) return false;
+    if (!ev.trigger && !ev.minYear && rng() > 0.08) return false;
     return true;
   });
 }
@@ -594,6 +623,19 @@ function fastForwardChunked(state, maxTicks = 50000, chunkSize = 800) {
   });
 }
 
+/** 统一推演入口：单局极速与批量共用，保证同人格结果一致 */
+function runProfileSimulation(profile, maxTicks = SIM_MAX_TICKS) {
+  const state = createInitialState(profile);
+  fastForwardToEnd(state, maxTicks);
+  return state;
+}
+
+async function runProfileSimulationAsync(profile, maxTicks = SIM_MAX_TICKS) {
+  const state = createInitialState(profile);
+  await fastForwardChunked(state, maxTicks);
+  return state;
+}
+
 function analyzeContributingFactors(state) {
   const stats = aggregateStats(state);
   const factors = [];
@@ -709,6 +751,7 @@ function generateReport(state) {
     stability: stats.stability.toFixed(1),
     research: (state.research * 100).toFixed(1) + '%',
     aiProfile: AI_PROFILES[state.aiProfile].name,
+    simSeed: state.simSeed,
     phase: state.phase === 2 ? '太空纪元' : '地球纪元（未完结）',
     endingId: state.ending,
     decisions,

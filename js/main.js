@@ -10,10 +10,8 @@ function startSimulation(profile) {
   if (loopId) cancelAnimationFrame(loopId);
   gameState = createInitialState(profile);
   addLog(gameState, '文明种子计划启动。AI 统筹官接管全部决策权。', 'important');
-  addLog(gameState, `决策人格：${AI_PROFILES[profile].name}`, 'important');
+  addLog(gameState, `决策人格：${AI_PROFILES[profile].name} · 种子 ${gameState.simSeed}`, 'important');
   showScreen('game-screen');
-  // 立即推进数日，让界面有可见变化
-  for (let i = 0; i < 5; i++) simulateTick(gameState);
   renderGame(gameState);
   speed = 1;
   ticksPerFrame = 1;
@@ -68,17 +66,18 @@ function setSpeed(s) {
   updateSpeedLabel(s);
 }
 
+/** 极速推演：从种子重置后跑完整路径，与批量推演完全一致 */
 async function fastSimulate() {
-  if (!gameState || gameState.gameOver) return;
+  if (!gameState) return;
+  const profile = gameState.aiProfile;
   if (loopId) cancelAnimationFrame(loopId);
-  const before = gameState.tick;
   setSpeed(0);
   document.getElementById('speed-label').textContent = '极速中…';
-  await fastForwardChunked(gameState, 30000);
+  gameState = await runProfileSimulationAsync(profile, SIM_MAX_TICKS);
   renderGame(gameState);
   if (gameState.gameOver) showEndScreen(gameState);
   else {
-    addLog(gameState, `极速推演 ${gameState.tick - before} 日`, 'important');
+    addLog(gameState, `推演 ${gameState.tick} 日未达结局（上限 ${SIM_MAX_TICKS}）`, 'important');
     renderGame(gameState);
     runLoop();
   }
@@ -101,32 +100,29 @@ function initUI() {
   document.getElementById('btn-fast').onclick = () => fastSimulate();
 
   document.getElementById('btn-sim-all').onclick = () => {
-    const profiles = Object.keys(AI_PROFILES);
-    runAllEndings(profiles);
+    runAllEndings(Object.keys(AI_PROFILES));
   };
 }
 
-/** 批量推演全部 AI 人格至结局，结果展示在开始页 */
+/** 批量推演：与单人格极速共用 runProfileSimulationAsync */
 async function runAllEndings(profiles) {
   const container = document.getElementById('sim-results');
   const btn = document.getElementById('btn-sim-all');
   container.hidden = false;
   btn.disabled = true;
-  container.innerHTML = '<p class="sim-loading">正在推演全部结局路径…（0/' + profiles.length + '）</p>';
 
   const results = [];
   for (let idx = 0; idx < profiles.length; idx++) {
     const p = profiles[idx];
     container.innerHTML = `<p class="sim-loading">正在推演：${AI_PROFILES[p].name}（${idx + 1}/${profiles.length}）…</p>`;
-    const s = createInitialState(p);
-    await fastForwardChunked(s, 40000);
+    const s = await runProfileSimulationAsync(p, SIM_MAX_TICKS);
     results.push(generateReport(s));
     await new Promise(r => setTimeout(r, 0));
   }
 
   btn.disabled = false;
   container.innerHTML = `
-    <h3>全人格推演结果</h3>
+    <h3>全人格推演结果 <span class="sim-note">（同人格可复现）</span></h3>
     <div class="sim-grid">
       ${results.map(r => `
         <div class="sim-card">
@@ -134,6 +130,7 @@ async function runAllEndings(profiles) {
           <div class="sim-cause">${r.causeTitle || ''}</div>
           <div class="sim-profile">${r.aiProfile}</div>
           <div class="sim-detail">${r.years}年 · 人口${r.population} · ${r.diversity}</div>
+          <div class="sim-seed">种子 ${r.simSeed}</div>
         </div>`).join('')}
     </div>`;
 }
