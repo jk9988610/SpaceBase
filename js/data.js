@@ -27,8 +27,8 @@ const PROFESSIONS = {
 
 const COMPARTMENTS = {
   habitat: { name: '人居舱', slots: 0, buildCost: { ore: 5 }, capacity: 500 },
-  agriculture: { name: '农业舱', slots: 3, buildCost: { ore: 8, volatiles: 3 }, output: { food: 4, energy: -1 } },
-  reactor: { name: '裂变能源舱', slots: 2, buildCost: { ore: 12 }, output: { energy: 8, ore: -0.1 } },
+  agriculture: { name: '农业舱', slots: 3, buildCost: { ore: 8, volatiles: 3 }, output: { food: 5.5, energy: -1 } },
+  reactor: { name: '裂变能源舱', slots: 2, buildCost: { ore: 12 }, output: { energy: 12, ore: -0.1 } },
   shipyard: { name: '小行星船坞', slots: 3, buildCost: { ore: 10, energy: 2 }, output: { ore: 3, energy: -2 } },
   lab: { name: '科研实验室', slots: 2, buildCost: { ore: 8, energy: 1 }, output: { energy: -1 } },
   medical: { name: '医疗舱', slots: 2, buildCost: { ore: 6, volatiles: 2 }, output: { energy: -1 } },
@@ -101,11 +101,31 @@ const LAW_GROUPS = {
 };
 
 const AI_PROFILES = {
-  survival: { name: '生存优先', weights: { resources: 1.5, morale: 0.8, diversity: 0.6, research: 0.5, loyalty: 0.9 } },
-  expansion: { name: '扩张优先', weights: { resources: 1.0, morale: 0.6, diversity: 0.7, research: 0.7, loyalty: 0.7, population: 1.4 } },
-  humanitarian: { name: '人道主义', weights: { resources: 0.7, morale: 1.5, diversity: 1.2, research: 0.6, loyalty: 1.0 } },
-  authoritarian: { name: '威权稳定', weights: { resources: 1.0, morale: 0.5, diversity: 0.4, research: 0.8, loyalty: 1.5, radical: -1.2 } },
-  technocrat: { name: '科技至上', weights: { resources: 0.9, morale: 0.6, diversity: 0.8, research: 1.6, loyalty: 0.8 } },
+  survival: {
+    name: '生存优先',
+    weights: { resources: 1.5, morale: 0.8, diversity: 0.6, research: 0.5, loyalty: 0.9, survival: 2.5 },
+    economy: { food: 1.15, energy: 1.1, volatiles: 1.05 },
+  },
+  expansion: {
+    name: '扩张优先',
+    weights: { resources: 1.0, morale: 0.6, diversity: 0.7, research: 0.7, loyalty: 0.7, population: 1.4 },
+    economy: { food: 1.0, energy: 1.05, buildOre: 0.85 },
+  },
+  humanitarian: {
+    name: '人道主义',
+    weights: { resources: 0.7, morale: 1.5, diversity: 1.2, research: 0.6, loyalty: 1.0 },
+    economy: { food: 1.08, energy: 1.0, morale: 1.1 },
+  },
+  authoritarian: {
+    name: '威权稳定',
+    weights: { resources: 1.0, morale: 0.5, diversity: 0.4, research: 0.8, loyalty: 1.5, radical: -1.2, survival: 1.8 },
+    economy: { food: 1.12, energy: 1.15, output: 1.1 },
+  },
+  technocrat: {
+    name: '科技至上',
+    weights: { resources: 0.9, morale: 0.6, diversity: 0.8, research: 1.6, loyalty: 0.8 },
+    economy: { food: 0.95, energy: 1.15, research: 1.25 },
+  },
 };
 
 const ENDINGS = {
@@ -203,7 +223,7 @@ const EVENTS = [
     choices: [
       { id: 'shutdown', label: '停堆检修', effects: { energy: -30, morale: 5, duration: 5 }, score: { resources: 0.5, morale: 0.5 } },
       { id: 'derate', label: '降功率维持', effects: { outputPenalty: 0.7, radiation: 5 }, score: { resources: 1 } },
-      { id: 'push', label: '满功率硬撑', effects: { meltdownRisk: 0.3 }, score: { resources: 1.5, morale: -1 } },
+      { id: 'push', label: '满功率硬撑', effects: { meltdownRisk: 0.3 }, score: { resources: 1.5, morale: -1, survival: -3 } },
     ],
   },
   {
@@ -260,6 +280,40 @@ const EVENTS = [
       { id: 'concede', label: '让步撤回', effects: { political: 10, morale: 8, radical: -8 }, score: { loyalty: 1.5, morale: 1 } },
       { id: 'enforce', label: '强制执行', effects: { loyalty: -10, radical: 12, outputPenalty: 0.6, duration: 10 }, score: { loyalty: -1, resources: 0.5 } },
       { id: 'negotiate', label: '派系谈判', effects: { political: -10, morale: 3, loyalty: 5 }, score: { loyalty: 1.2 } },
+    ],
+  },
+  {
+    id: 'earth_supply',
+    title: '地球紧急补给',
+    phase: 1,
+    once: true,
+    trigger: { foodBelow: 20, energyBelow: 15 },
+    text: '地球联盟投送最后一批生存物资补给舱，这是存续协议的关键救援。',
+    choices: [
+      { id: 'accept', label: '接收补给', effects: { food: 80, energy: 50, volatiles: 40 }, score: { resources: 3 } },
+    ],
+  },
+  {
+    id: 'asteroid_volatiles',
+    title: '小行星挥发物采集',
+    phase: 2,
+    trigger: { volatilesBelow: 40 },
+    text: '采矿船坞从小行星冰核中提取挥发物，补充生态闭环储备。',
+    choices: [
+      { id: 'mine', label: '加大开采', effects: { volatiles: 25, energy: -10, ore: 8 }, score: { resources: 2 } },
+      { id: 'steady', label: '稳态采集', effects: { volatiles: 15, energy: -5 }, score: { resources: 1.5, morale: 0.5 } },
+    ],
+  },
+  {
+    id: 'orbital_greenhouse',
+    title: '轨道温室扩建',
+    phase: 2,
+    once: true,
+    trigger: { foodBelow: 30 },
+    text: '科研团队提出轨道温室方案，利用撞击后散落的小行星碎片搭建临时农业模块。',
+    choices: [
+      { id: 'build', label: '投入建设', effects: { food: 40, volatiles: -10, ore: -15 }, score: { resources: 2 } },
+      { id: 'defer', label: '暂缓', effects: { morale: -5 }, score: { morale: -0.5 } },
     ],
   },
   {
