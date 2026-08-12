@@ -51,13 +51,25 @@ function getProfileEconomy(state) {
   return AI_PROFILES[state.aiProfile]?.economy || {};
 }
 
-function createInitialState(aiProfile = 'survival') {
-  const simSeed = hashString(aiProfile);
+function createInitialState(profileOrOpts = 'survival') {
+  const opts = typeof profileOrOpts === 'string'
+    ? { aiProfile: profileOrOpts, gameMode: 'ai', baseId: 'frontier' }
+    : (profileOrOpts || {});
+  const aiProfile = opts.aiProfile || 'survival';
+  const gameMode = opts.gameMode || 'ai';
+  const baseId = opts.baseId || 'frontier';
+  const base = STARTING_BASES[baseId] || STARTING_BASES.frontier;
+
+  const simSeed = gameMode === 'ai'
+    ? hashString(aiProfile)
+    : hashString(`player_${baseId}_${opts.seed ?? 0}`);
+
   initRng(simSeed);
   _popCounter = 0;
 
   const laws = {};
   Object.entries(LAW_GROUPS).forEach(([k, g]) => { laws[k] = g.default; });
+  if (base.laws) Object.assign(laws, base.laws);
 
   const pops = [
     createPop('eco_engineer', 300, { geneGroup: 'A', skillTier: 4 }),
@@ -68,21 +80,32 @@ function createInitialState(aiProfile = 'survival') {
     createPop('admin', 40, { geneGroup: 'E' }),
     createPop('colonist', 380, { geneGroup: pick(GENE_GROUPS), morale: 55 }),
   ];
+  Object.entries(base.popAdjust || {}).forEach(([prof, delta]) => {
+    if (prof === 'colonist') {
+      const c = pops.find(p => p.profession === 'colonist');
+      if (c) c.count = Math.max(0, c.count + delta);
+      return;
+    }
+    const p = pops.find(x => x.profession === prof);
+    if (p) p.count = Math.max(0, p.count + delta);
+    else if (delta > 0) pops.push(createPop(prof, delta, { skillTier: 3 }));
+  });
 
-  const compartments = {
-    habitat: 2, agriculture: 3, reactor: 3, shipyard: 1,
-    lab: 1, medical: 1, archive: 1, immigration: 1,
-  };
+  const compartments = { ...base.compartments };
 
   const state = {
     tick: 0,
     phase: 1,
     aiProfile,
+    gameMode,
+    baseId,
+    baseName: base.name,
+    baseCode: base.code,
     simSeed,
     laws,
     pops,
     compartments,
-    resources: { energy: 140, food: 180, ore: 80, volatiles: 120 },
+    resources: { ...base.resources },
     research: 0,
     political: 50,
     flags: {},
@@ -98,6 +121,7 @@ function createInitialState(aiProfile = 'survival') {
     endingCause: null,
     archive: { snapshots: [], decisions: [], laws: [], milestones: [], initial: null },
     currentEvent: null,
+    pendingEvent: null,
     lastAIDecision: null,
     log: [],
     gameOver: false,
@@ -118,10 +142,16 @@ function createInitialState(aiProfile = 'survival') {
   state.peakPopulation = initPop;
   state.peakPopulationYear = 0;
   state.lastMonthPopulation = initPop;
-  recordMilestone(state, 'baseline', '首座太空基地建成',
+  recordMilestone(state, 'baseline', `${base.name}（${base.code}）建成`,
     `首批移民 ${initPop} 人入驻，地球倒计时 ${EARTH_COUNTDOWN_YEARS} 年开始`);
 
   return state;
+}
+
+function queuePlayerEvent(state, event) {
+  state.pendingEvent = event;
+  state.currentEvent = { ...event, awaitingChoice: true };
+  addLog(state, `⚠ 待决事件：${event.title}`, 'important');
 }
 
 function captureStateSnapshot(state) {
@@ -579,27 +609,37 @@ const ENDING_FROM_EVENT = {
   schism: { cause: 'schism_ntr' },
 };
 
-function resolveEvent(state, event) {
-  const { choice, score, profile } = aiChoose(event.choices, state);
+function resolveEventWithChoice(state, event, choice, meta = {}) {
   applyChoiceEffects(state, choice);
   if (choice.effects?.ending) {
-    const meta = ENDING_FROM_EVENT[choice.effects.ending] || { cause: 'event_choice' };
-    setEnding(state, choice.effects.ending, meta.cause, {
+    const metaEnd = ENDING_FROM_EVENT[choice.effects.ending] || { cause: 'event_choice' };
+    setEnding(state, choice.effects.ending, metaEnd.cause, {
       event: event.title,
       choice: choice.label,
     });
   }
+  const reason = meta.reason || (meta.actor === 'player' ? '玩家手动抉择' : '自动决策');
   const decision = {
     event: event.title,
     choice: choice.label,
-    reason: `AI「${profile}」策略评分 ${score.toFixed(2)}`,
+    reason,
     tick: state.tick,
   };
   state.lastAIDecision = decision;
-  archiveDecision(state, event.id, `${event.title}：${choice.label}`, decision.reason);
-  addLog(state, `[AI] ${event.title} → ${choice.label}（${decision.reason}）`, 'important');
+  archiveDecision(state, event.id, `${event.title}：${choice.label}`, reason);
+  const prefix = meta.actor === 'player' ? '[玩家]' : '[AI]';
+  addLog(state, `${prefix} ${event.title} → ${choice.label}`, 'important');
   state.currentEvent = { ...event, resolved: choice };
+  state.pendingEvent = null;
   state.triggeredEvents.add(event.id);
+}
+
+function resolveEvent(state, event) {
+  const { choice, score, profile } = aiChoose(event.choices, state);
+  resolveEventWithChoice(state, event, choice, {
+    actor: 'ai',
+    reason: `AI「${profile}」策略评分 ${score.toFixed(2)}`,
+  });
 }
 
 function getEligibleEvents(state) {
@@ -786,7 +826,10 @@ function checkEnding(state) {
       && state.tick >= IMPACT_TICK + TICKS_PER_MONTH * 3
       && !state.triggeredEvents.has('launch_decision')) {
     const ev = EVENTS.find(e => e.id === 'launch_decision');
-    if (ev) resolveEvent(state, ev);
+    if (ev) {
+      if (state.gameMode === 'player' && !state.pendingEvent) queuePlayerEvent(state, ev);
+      else resolveEvent(state, ev);
+    }
     if (state.gameOver) return state.ending;
   }
 
@@ -845,7 +888,7 @@ function checkEnding(state) {
 }
 
 function simulateTick(state) {
-  if (state.gameOver) return state;
+  if (state.gameOver || state.pendingEvent) return state;
 
   state.tick++;
   checkPhaseTransition(state);
@@ -856,11 +899,20 @@ function simulateTick(state) {
   archiveSnapshot(state);
 
   const events = getEligibleEvents(state);
-  if (events.length) resolveEvent(state, pick(events));
+  if (events.length) {
+    const event = pick(events);
+    if (state.gameMode === 'player') {
+      queuePlayerEvent(state, event);
+      return state;
+    }
+    resolveEvent(state, event);
+  }
 
-  aiConsiderLaws(state);
-  aiEmergencyProtocols(state);
-  aiConsiderBuild(state);
+  if (state.gameMode !== 'player') {
+    aiConsiderLaws(state);
+    aiEmergencyProtocols(state);
+    aiConsiderBuild(state);
+  }
   checkEnding(state);
 
   return state;
@@ -900,6 +952,10 @@ function runProfileSimulation(profile, maxTicks = SIM_MAX_TICKS) {
   const state = createInitialState(profile);
   fastForwardToEnd(state, maxTicks);
   return state;
+}
+
+function createPlayerState(baseId, seed) {
+  return createInitialState({ gameMode: 'player', baseId, seed: seed ?? (Date.now() & 0xfffffff) });
 }
 
 async function runProfileSimulationAsync(profile, maxTicks = SIM_MAX_TICKS) {
@@ -1045,7 +1101,8 @@ function generateReport(state) {
     diversity: (stats.diversity * 100).toFixed(1) + '%',
     stability: stats.stability.toFixed(1),
     research: (state.research * 100).toFixed(1) + '%',
-    aiProfile: AI_PROFILES[state.aiProfile].name,
+    aiProfile: state.gameMode === 'player' ? '玩家执政' : AI_PROFILES[state.aiProfile].name,
+    baseName: state.baseName || STARTING_BASES.frontier.name,
     simSeed: state.simSeed,
     phase: state.phase === 2 ? '太空纪元' : '地球纪元（未完结）',
     endingId: state.ending,

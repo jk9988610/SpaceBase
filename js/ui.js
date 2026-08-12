@@ -22,7 +22,26 @@ function renderGame(state) {
   document.getElementById('date-display').textContent = formatDate(state);
   document.getElementById('phase-badge').textContent = state.phase === 1 ? '地球纪元' : '太空纪元';
   document.getElementById('phase-badge').className = `phase-badge ${state.phase === 1 ? 'earth' : 'space'}`;
-  document.getElementById('ai-profile-badge').textContent = `AI：${AI_PROFILES[state.aiProfile].name}`;
+  document.getElementById('ai-profile-badge').textContent = state.gameMode === 'player'
+    ? '玩家执政'
+  : `AI：${AI_PROFILES[state.aiProfile].name}`;
+
+  const modeBadge = document.getElementById('mode-badge');
+  if (modeBadge) {
+    modeBadge.textContent = state.gameMode === 'player' ? '玩家执政' : 'AI 观战';
+    modeBadge.className = `mode-badge ${state.gameMode === 'player' ? 'player' : 'ai'}`;
+  }
+
+  const stationEl = document.getElementById('station-name');
+  if (stationEl) {
+    stationEl.textContent = `${state.baseName || '太空基地'} ${state.baseCode || 'Ω-1'}`;
+  }
+
+  const pauseBanner = document.getElementById('event-pause-banner');
+  if (pauseBanner) pauseBanner.hidden = !state.pendingEvent;
+
+  const fastBtn = document.getElementById('btn-fast');
+  if (fastBtn) fastBtn.hidden = state.gameMode === 'player';
 
   const countdown = state.phase === 1
     ? `撞击倒计时 ${Math.max(0, EARTH_COUNTDOWN_YEARS - getYear(state))} 年`
@@ -115,25 +134,31 @@ function renderNarrative(state) {
   const body = document.getElementById('narrative-text');
   const aiBox = document.getElementById('ai-decision');
 
-  if (state.currentEvent?.resolved) {
+  if (state.currentEvent?.awaitingChoice) {
+    title.textContent = state.currentEvent.title;
+    body.innerHTML = `<p>${state.currentEvent.text}</p><p class="event-await-hint">请在弹窗中做出抉择…</p>`;
+    aiBox.hidden = true;
+  } else if (state.currentEvent?.resolved) {
     title.textContent = state.currentEvent.title;
     body.innerHTML = `<p>${state.currentEvent.text}</p>`;
   } else if (state.lastAIDecision) {
     title.textContent = '基地运转';
-    body.innerHTML = `<p>基地在 ${formatDate(state)} 继续运转。AI 统筹官监控着每一个舱室与群体。</p>`;
+    const who = state.gameMode === 'player' ? '你' : 'AI 统筹官';
+    body.innerHTML = `<p>基地在 ${formatDate(state)} 继续运转。${who}监控着每一个舱室与群体。</p>`;
   } else {
     title.textContent = '文明种子计划';
     body.innerHTML = `<p>地球联盟启动太空基地计划。AI 统筹官接管决策权，带领人类文明种子走向未知结局。</p>`;
   }
 
-  if (state.lastAIDecision) {
+  if (state.lastAIDecision && !state.currentEvent?.awaitingChoice) {
     aiBox.hidden = false;
+    const label = state.gameMode === 'player' ? '最近决策' : 'AI 决策';
     aiBox.innerHTML = `
-      <div class="ai-label">AI 决策</div>
+      <div class="ai-label">${label}</div>
       <div class="ai-event">${state.lastAIDecision.event}</div>
       <div class="ai-choice">→ ${state.lastAIDecision.choice}</div>
       <div class="ai-reason">${state.lastAIDecision.reason}</div>`;
-  } else {
+  } else if (!state.currentEvent?.awaitingChoice) {
     aiBox.hidden = true;
   }
 }
@@ -214,7 +239,7 @@ function showEndScreen(state) {
 
   document.getElementById('end-stats').innerHTML = `
     <div class="report-block">
-      <p>AI 人格：${report.aiProfile} · ${report.phase} · 存续 ${report.years} 年 · 种子 ${report.simSeed}</p>
+      <p>${state.gameMode === 'player' ? '玩家执政' : `AI 人格：${report.aiProfile}`} · ${report.baseName ? report.baseName + ' · ' : ''}${report.phase} · 存续 ${report.years} 年 · 种子 ${report.simSeed}</p>
       <p>人口 初始→峰值→终局：${report.stateChanges.find(r => r.isAnchor)?.initial || '?'} → ${report.peakPopulation}（Y${report.peakPopulationYear}）→ ${report.population}</p>
       <p>多样性 ${report.diversity} · 社会稳定 ${report.stability} · 生态健康 ${report.resourceHealth} · 科研 ${report.research}</p>
     </div>
@@ -258,5 +283,45 @@ function showEndScreen(state) {
 
 function updateSpeedLabel(speed) {
   const labels = { 0: '暂停', 1: '1×', 4: '4×', 16: '16×' };
-  document.getElementById('speed-label').textContent = labels[speed] || `${speed}×`;
+  const el = document.getElementById('speed-label');
+  if (el) el.textContent = labels[speed] || `${speed}×`;
+}
+
+function renderBaseSelection(selectedId) {
+  const grid = document.getElementById('base-grid');
+  if (!grid) return;
+  grid.innerHTML = Object.entries(STARTING_BASES).map(([id, b]) => `
+    <button type="button" class="base-card ${id === selectedId ? 'selected' : ''}" data-base="${id}">
+      <div class="base-card-header">
+        <span class="base-card-name">${b.name}</span>
+        <span class="base-card-code">${b.code}</span>
+      </div>
+      <div class="base-card-tag">${b.tagline}</div>
+      <p class="base-card-desc">${b.desc}</p>
+      <span class="base-card-diff">难度：${b.difficulty}</span>
+    </button>`).join('');
+}
+
+function showEventChoiceModal(state, onChoose) {
+  const event = state.pendingEvent;
+  if (!event) return;
+  const modal = document.getElementById('event-modal');
+  document.getElementById('event-modal-title').textContent = event.title;
+  document.getElementById('event-modal-text').textContent = event.text;
+  const choicesEl = document.getElementById('event-modal-choices');
+  choicesEl.innerHTML = event.choices.map(c => `
+    <button type="button" class="event-choice-btn" data-choice-id="${c.id}">${c.label}</button>
+  `).join('');
+  choicesEl.querySelectorAll('[data-choice-id]').forEach(btn => {
+    btn.onclick = () => {
+      const choice = event.choices.find(c => c.id === btn.dataset.choiceId);
+      if (choice) onChoose(choice);
+    };
+  });
+  modal.hidden = false;
+}
+
+function hideEventChoiceModal() {
+  const modal = document.getElementById('event-modal');
+  if (modal) modal.hidden = true;
 }
